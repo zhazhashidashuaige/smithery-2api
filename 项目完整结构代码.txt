@@ -1,0 +1,681 @@
+项目 'smithery-2api' 的结构树:
+📂 smithery-2api/
+    📄 .env
+    📄 .env.example
+    📄 Dockerfile
+    📄 docker-compose.yml
+    📄 main.py
+    📄 nginx.conf
+    📄 requirements.txt
+    📂 app/
+        📂 core/
+            📄 __init__.py
+            📄 config.py
+        📂 providers/
+            📄 __init__.py
+            📄 base_provider.py
+            📄 smithery_provider.py
+        📂 services/
+            📄 session_manager.py
+            📄 tool_caller.py
+        📂 utils/
+            📄 sse_utils.py
+================================================================================
+
+--- 文件路径: .env ---
+
+# [自动填充] smithery-2api 生产环境配置
+# 该文件由 Genesis Protocol · Ω (Omega) 版自动生成和修正
+
+# --- 安全配置 ---
+# 用于保护您的 API 服务的访问密钥，请按需修改为您自己的复杂密钥。
+API_MASTER_KEY=1
+
+# --- 端口配置 ---
+# Nginx 对外暴露的端口
+NGINX_PORT=8088
+
+# --- Smithery.ai 凭证 (支持多账号) ---
+# 格式已根据最终方案自动转换。请勿手动修改此 JSON 结构。
+# 您可以添加 SMITHERY_COOKIE_2, SMITHERY_COOKIE_3 等来启用轮询
+SMITHERY_COOKIE_1='{"access_token":"eyJhbGciOiJIUzI1NiIsImtpZCI6Ikk4N0N0U1U2UHFrWlVVV0QiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL3NwamF3YmZwd2V6amZtaWNvcHNsLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI1OTA1ZjZiNC1kNzRmLTQ2YjQtOWI0Zi05ZGJiY2NiMjliZWUiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzYwNzkxMjY1LCJpYXQiOjE3NjA3ODc2NjUsImVtYWlsIjoiMjg2NDQ2MDQ1OUBxcS5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImdpdGh1YiIsInByb3ZpZGVycyI6WyJnaXRodWIiXX0sInVzZXJfbWV0YWRhdGEiOnsiYXZhdGFyX3VybCI6Imh0dHBzOi8vYXZhdGFycy5naXRodWJ1c2VyY29udGVudC5jb20vdS8xMjg4ODAyMDY_dj00IiwiZW1haWwiOiIyODY0NDYwNDU5QHFxLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJmdWxsX25hbWUiOiJDaGluZXNlLXRpbmdmZW5nIiwiaXNzIjoiaHR0cHM6Ly9hcGkuZ2l0aHViLmNvbSIsIm5hbWUiOiJDaGluZXNlLXRpbmdmZW5nIiwicGhvbmVfdmVyaWZpZWQiOmZhbHNlLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJsekE2IiwicHJvdmlkZXJfaWQiOiIxMjg4ODAyMDYiLCJzdWIiOiIxMjg4ODAyMDYiLCJ1c2VyX25hbWUiOiJsekE2In0sInJvbGUiOiJhdXRoZW50aWNhdGVkIiwiYWFsIjoiYWFsMSIsImFtciI6W3sibWV0aG9kIjoib2F1dGgiLCJ0aW1lc3RhbXAiOjE3NTkxNjA1NDF9XSwic2Vzc2lvbl9pZCI6IjQxM2E0NTJjLTFjYjgtNDY5OC04YjYxLTQxYjQ3YjU5YjE4NyIsImlzX2Fub255bW91cyI6ZmFsc2V9.L4EcDMbtxobs_PpoPjpIfqvLxoIDyo_fFiLD4PyMwDo","token_type":"bearer","expires_in":3600,"expires_at":1760791265,"refresh_token":"4jxavtzs4tbw","user":{"id":"5905f6b4-d74f-46b4-9b4f-9dbbccb29bee","aud":"authenticated","role":"authenticated","email":"2864460459@qq.com","email_confirmed_at":"2025-09-29T15:42:18.953805Z","phone":"","confirmed_at":"2025-09-29T15:42:18.953805Z","last_sign_in_at":"2025-09-29T15:42:21.761683Z","app_metadata":{"provider":"github","providers":["github"]},"user_metadata":{"avatar_url":"https://avatars.githubusercontent.com/u/128880206?v=4","email":"2864460459@qq.com","email_verified":true,"full_name":"Chinese-tingfeng","iss":"https://api.github.com","name":"Chinese-tingfeng","phone_verified":false,"preferred_username":"lzA6","provider_id":"128880206","sub":"128880206","user_name":"lzA6"},"identities":[{"identity_id":"f3fd9077-2a8c-422d-b607-0a721f4ab6c2","id":"128880206","user_id":"5905f6b4-d74f-46b4-9b4f-9dbbccb29bee","identity_data":{"avatar_url":"https://avatars.githubusercontent.com/u/128880206?v=4","email":"2864460459@qq.com","email_verified":true,"full_name":"Chinese-tingfeng","iss":"https://api.github.com","name":"Chinese-tingfeng","phone_verified":false,"preferred_username":"lzA6","provider_id":"128880206","sub":"128880206","user_name":"lzA6"},"provider":"github","last_sign_in_at":"2025-09-29T15:42:18.9472Z","created_at":"2025-09-29T15:42:18.947275Z","updated_at":"2025-09-29T15:42:18.947275Z","email":"2864460459@qq.com"}],"created_at":"2025-09-29T15:42:18.943571Z","updated_at":"2025-10-18T11:41:04.939715Z","is_anonymous":false}}'
+
+# --- 会话管理 ---
+# 对话历史在内存中的缓存时间（秒），默认1小时
+SESSION_CACHE_TTL=3600
+
+
+--- 文件路径: .env.example ---
+
+# ====================================================================
+# smithery-2api 配置文件模板
+# ====================================================================
+#
+# 请将此文件重命名为 ".env" 并填入您的凭证。
+#
+
+# --- 核心安全配置 (必须设置) ---
+# 用于保护您 API 服务的访问密钥。
+API_MASTER_KEY=sk-smithery-2api-default-key-please-change-me
+
+# --- 部署配置 (可选) ---
+# Nginx 对外暴露的端口
+NGINX_PORT=8088
+
+# --- Smithery.ai 凭证 (必须设置) ---
+# 请从浏览器开发者工具中获取完整的 Cookie 字符串。
+# 支持多账号轮询，只需按格式添加 SMITHERY_COOKIE_2, SMITHERY_COOKIE_3, ...
+SMITHERY_COOKIE_1="在此处粘贴您的完整 Cookie 字符串"
+
+# --- 会话管理 (可选) ---
+# 对话历史在内存中的缓存时间（秒），默认1小时
+SESSION_CACHE_TTL=3600
+
+
+--- 文件路径: Dockerfile ---
+
+# ====================================================================
+# Dockerfile for smithery-2api (v1.0 - Genesis Omega Edition)
+# ====================================================================
+
+FROM python:3.10-slim
+
+# 设置环境变量
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+WORKDIR /app
+
+# 安装 Python 依赖
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# 复制应用代码
+COPY . .
+
+# 创建并切换到非 root 用户
+RUN useradd --create-home appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+# 暴露端口并启动
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+
+
+--- 文件路径: docker-compose.yml ---
+
+services:
+  nginx:
+    image: nginx:latest
+    container_name: smithery-2api-nginx
+    restart: always
+    ports:
+      - "${NGINX_PORT:-8088}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
+    networks:
+      - smithery-net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smithery-2api-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - smithery-net
+
+networks:
+  smithery-net:
+    driver: bridge
+
+
+--- 文件路径: main.py ---
+
+import logging
+from contextlib import asynccontextmanager
+from typing import Optional
+
+from fastapi import FastAPI, Request, HTTPException, Depends, Header
+from fastapi.responses import JSONResponse, StreamingResponse
+
+from app.core.config import settings
+from app.providers.smithery_provider import SmitheryProvider
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+provider = SmitheryProvider()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info(f"应用启动中... {settings.APP_NAME} v{settings.APP_VERSION}")
+    logger.info("服务已进入 'Cloudscraper' 模式，将自动处理 Cloudflare 挑战。")
+    logger.info(f"服务将在 http://localhost:{settings.NGINX_PORT} 上可用")
+    yield
+    logger.info("应用关闭。")
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    description=settings.DESCRIPTION,
+    lifespan=lifespan
+)
+
+async def verify_api_key(authorization: Optional[str] = Header(None)):
+    if settings.API_MASTER_KEY and settings.API_MASTER_KEY != "1":
+        if not authorization or "bearer" not in authorization.lower():
+            raise HTTPException(status_code=401, detail="需要 Bearer Token 认证。")
+        token = authorization.split(" ")[-1]
+        if token != settings.API_MASTER_KEY:
+            raise HTTPException(status_code=403, detail="无效的 API Key。")
+
+@app.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
+async def chat_completions(request: Request) -> StreamingResponse:
+    try:
+        request_data = await request.json()
+        return await provider.chat_completion(request_data)
+    except Exception as e:
+        logger.error(f"处理聊天请求时发生顶层错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"内部服务器错误: {str(e)}")
+
+@app.get("/v1/models", dependencies=[Depends(verify_api_key)], response_class=JSONResponse)
+async def list_models():
+    return await provider.get_models()
+
+@app.get("/", summary="根路径")
+def root():
+    return {"message": f"欢迎来到 {settings.APP_NAME} v{settings.APP_VERSION}. 服务运行正常。"}
+
+
+--- 文件路径: nginx.conf ---
+
+worker_processes auto;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    upstream smithery_backend {
+        server app:8000;
+    }
+
+    server {
+        listen 80;
+        server_name localhost;
+
+        location / {
+            proxy_pass http://smithery_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_set_header Connection '';
+            proxy_http_version 1.1;
+            chunked_transfer_encoding off;
+        }
+    }
+}
+
+
+--- 文件路径: requirements.txt ---
+
+fastapi
+uvicorn[standard]
+pydantic-settings
+python-dotenv
+cloudscraper
+cachetools
+httpx
+
+
+--- 文件路径: app\core\__init__.py ---
+
+
+
+--- 文件路径: app\core\config.py ---
+
+import os
+import json
+import logging
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import List, Optional, Dict
+
+# 获取一个日志记录器实例
+logger = logging.getLogger(__name__)
+
+class AuthCookie:
+    """
+    处理并生成 Smithery.ai 所需的认证 Cookie。
+    它将 .env 文件中的 JSON 字符串转换为一个标准的 HTTP Cookie 头部字符串。
+    """
+    def __init__(self, json_string: str):
+        try:
+            # 1. 解析从 .env 文件读取的 JSON 字符串
+            data = json.loads(json_string)
+            self.access_token = data.get("access_token")
+            self.refresh_token = data.get("refresh_token")
+            self.expires_at = data.get("expires_at", 0)
+            
+            if not self.access_token:
+                raise ValueError("Cookie JSON 中缺少 'access_token'")
+
+            # 2. 构造将要放入 Cookie header 的值部分 (它本身也是一个 JSON)
+            #    注意：这里我们只包含 Supabase auth 需要的核心字段
+            cookie_value_data = {
+                "access_token": self.access_token,
+                "refresh_token": self.refresh_token,
+                "token_type": data.get("token_type", "bearer"),
+                "expires_in": data.get("expires_in", 3600),
+                "expires_at": self.expires_at,
+                "user": data.get("user")
+            }
+            
+            # 3. 构造完整的 Cookie 键值对字符串
+            #    Smithery.ai 使用的 Supabase project_ref 是 'spjawbfpwezjfmicopsl'
+            project_ref = "spjawbfpwezjfmicopsl"
+            cookie_key = f"sb-{project_ref}-auth-token"
+            # 将值部分转换为紧凑的 JSON 字符串
+            cookie_value = json.dumps(cookie_value_data, separators=(',', ':'))
+            
+            # 最终用于 HTTP Header 的字符串，格式为 "key=value"
+            self.header_cookie_string = f"{cookie_key}={cookie_value}"
+
+        except json.JSONDecodeError as e:
+            raise ValueError(f"无法从提供的字符串中解析认证 JSON: {e}")
+        except Exception as e:
+            raise ValueError(f"初始化 AuthCookie 时出错: {e}")
+
+    def __repr__(self):
+        return f"<AuthCookie expires_at={self.expires_at}>"
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding='utf-8',
+        extra="ignore"
+    )
+
+    APP_NAME: str = "smithery-2api"
+    APP_VERSION: str = "1.0.0"
+    DESCRIPTION: str = "一个将 smithery.ai 转换为兼容 OpenAI 格式 API 的高性能代理，支持多账号、上下文和工具调用。"
+
+    CHAT_API_URL: str = "https://smithery.ai/api/chat"
+    TOKEN_REFRESH_URL: str = "https://spjawbfpwezjfmicopsl.supabase.co/auth/v1/token?grant_type=refresh_token"
+    SUPABASE_API_KEY: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNwamF3YmZwd2V6amZtaWNvcHNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzQxNDc0MDUsImV4cCI6MjA0OTcyMzQwNX0.EBIg7_F2FZh4KZ3UNwZdBRjpp2fgHqXGJOvOSQ053MU"
+
+    API_MASTER_KEY: Optional[str] = None
+    
+    AUTH_COOKIES: List[AuthCookie] = []
+
+    API_REQUEST_TIMEOUT: int = 180
+    NGINX_PORT: int = 8088
+    SESSION_CACHE_TTL: int = 3600
+
+    KNOWN_MODELS: List[str] = [
+        "claude-haiku-4.5", "claude-sonnet-4.5", "gpt-5", "gpt-5-mini", 
+        "gpt-5-nano", "gemini-2.5-flash-lite", "gemini-2.5-pro", "glm-4.6", 
+        "grok-4-fast-non-reasoning", "grok-4-fast-reasoning", "kimi-k2", "deepseek-reasoner"
+    ]
+
+    def __init__(self, **values):
+        super().__init__(**values)
+        # 从环境变量 SMITHERY_COOKIE_1, SMITHERY_COOKIE_2, ... 加载 cookies
+        i = 1
+        while True:
+            cookie_str = os.getenv(f"SMITHERY_COOKIE_{i}")
+            if cookie_str:
+                try:
+                    # 使用 AuthCookie 类来解析和处理 cookie 字符串
+                    self.AUTH_COOKIES.append(AuthCookie(cookie_str))
+                except ValueError as e:
+                    logger.warning(f"无法加载或解析 SMITHERY_COOKIE_{i}: {e}")
+                i += 1
+            else:
+                break
+        
+        if not self.AUTH_COOKIES:
+            raise ValueError("必须在 .env 文件中至少配置一个有效的 SMITHERY_COOKIE_1")
+
+settings = Settings()
+
+
+--- 文件路径: app\providers\__init__.py ---
+
+
+
+--- 文件路径: app\providers\base_provider.py ---
+
+from abc import ABC, abstractmethod
+from typing import Dict, Any
+from fastapi.responses import StreamingResponse, JSONResponse
+
+class BaseProvider(ABC):
+    @abstractmethod
+    async def chat_completion(
+        self,
+        request_data: Dict[str, Any]
+    ) -> StreamingResponse:
+        pass
+
+    @abstractmethod
+    async def get_models(self) -> JSONResponse:
+        pass
+
+
+--- 文件路径: app\providers\smithery_provider.py ---
+
+import json
+import time
+import logging
+import uuid
+import random
+import cloudscraper
+from typing import Dict, Any, AsyncGenerator, List
+
+from fastapi import HTTPException
+from fastapi.responses import StreamingResponse, JSONResponse
+
+from app.core.config import settings
+from app.providers.base_provider import BaseProvider
+# 移除了不再使用的 SessionManager
+# from app.services.session_manager import SessionManager
+from app.utils.sse_utils import create_sse_data, create_chat_completion_chunk, DONE_CHUNK
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - [%(levelname)s] - %(message)s')
+logger = logging.getLogger(__name__)
+
+class SmitheryProvider(BaseProvider):
+    def __init__(self):
+        # self.session_manager = SessionManager() # 移除会话管理器
+        self.scraper = cloudscraper.create_scraper()
+        self.cookie_index = 0
+
+    def _get_cookie(self) -> str:
+        """从配置中轮换获取一个格式正确的 Cookie 字符串。"""
+        auth_cookie_obj = settings.AUTH_COOKIES[self.cookie_index]
+        self.cookie_index = (self.cookie_index + 1) % len(settings.AUTH_COOKIES)
+        return auth_cookie_obj.header_cookie_string
+
+    def _convert_messages_to_smithery_format(self, openai_messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        将客户端发来的 OpenAI 格式消息列表转换为 Smithery.ai 后端所需的格式。
+        例如: {"role": "user", "content": "你好"} -> {"role": "user", "parts": [{"type": "text", "text": "你好"}]}
+        """
+        smithery_messages = []
+        for msg in openai_messages:
+            role = msg.get("role")
+            content = msg.get("content", "")
+            
+            # 忽略格式不正确或内容为空的消息
+            if not role or not isinstance(content, str):
+                continue
+                
+            smithery_messages.append({
+                "role": role,
+                "parts": [{"type": "text", "text": content}],
+                "id": f"msg-{uuid.uuid4().hex[:16]}"
+            })
+        return smithery_messages
+
+    async def chat_completion(self, request_data: Dict[str, Any]) -> StreamingResponse:
+        """
+        处理聊天补全请求。
+        此实现为无状态模式，完全依赖客户端发送的完整对话历史。
+        """
+        
+        # 1. 直接从客户端请求中获取完整的消息历史
+        messages_from_client = request_data.get("messages", [])
+        
+        # 2. 将其转换为 Smithery.ai 后端所需的格式
+        smithery_formatted_messages = self._convert_messages_to_smithery_format(messages_from_client)
+
+        async def stream_generator() -> AsyncGenerator[bytes, None]:
+            request_id = f"chatcmpl-{uuid.uuid4()}"
+            model = request_data.get("model", "claude-haiku-4.5")
+            
+            try:
+                # 3. 使用转换后的消息列表准备请求体
+                payload = self._prepare_payload(model, smithery_formatted_messages)
+                headers = self._prepare_headers()
+                
+                logger.info("===================== [REQUEST TO SMITHERY (Stateless)] =====================")
+                logger.info(f"URL: POST {settings.CHAT_API_URL}")
+                logger.info(f"PAYLOAD:\n{json.dumps(payload, indent=2, ensure_ascii=False)}")
+                logger.info("=====================================================================================")
+
+                # 使用 cloudscraper 发送请求
+                response = self.scraper.post(
+                    settings.CHAT_API_URL, 
+                    headers=headers, 
+                    json=payload, 
+                    stream=True, 
+                    timeout=settings.API_REQUEST_TIMEOUT
+                )
+
+                if response.status_code != 200:
+                    logger.error("==================== [RESPONSE FROM SMITHERY (ERROR)] ===================")
+                    logger.error(f"STATUS CODE: {response.status_code}")
+                    logger.error(f"RESPONSE BODY:\n{response.text}")
+                    logger.error("=================================================================")
+                
+                response.raise_for_status()
+
+                # 4. 流式处理返回的数据 (此部分逻辑不变)
+                for line in response.iter_lines():
+                    if line.startswith(b"data:"):
+                        content = line[len(b"data:"):].strip()
+                        if content == b"[DONE]":
+                            break
+                        try:
+                            data = json.loads(content)
+                            if data.get("type") == "text-delta":
+                                delta_content = data.get("delta", "")
+                                chunk = create_chat_completion_chunk(request_id, model, delta_content)
+                                yield create_sse_data(chunk)
+                        except json.JSONDecodeError:
+                            if content:
+                                logger.warning(f"无法解析 SSE 数据块: {content}")
+                            continue
+                
+                # 5. 无状态模式下，无需保存任何会话，直接发送结束标志
+                final_chunk = create_chat_completion_chunk(request_id, model, "", "stop")
+                yield create_sse_data(final_chunk)
+                yield DONE_CHUNK
+
+            except Exception as e:
+                logger.error(f"处理流时发生错误: {e}", exc_info=True)
+                error_message = f"内部服务器错误: {str(e)}"
+                error_chunk = create_chat_completion_chunk(request_id, model, error_message, "stop")
+                yield create_sse_data(error_chunk)
+                yield DONE_CHUNK
+
+        return StreamingResponse(stream_generator(), media_type="text/event-stream")
+
+    def _prepare_headers(self) -> Dict[str, str]:
+        # 包含我们之前分析出的所有必要请求头
+        return {
+            "Accept": "*/*",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Content-Type": "application/json",
+            "Cookie": self._get_cookie(),
+            "Origin": "https://smithery.ai",
+            "Referer": "https://smithery.ai/playground",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "priority": "u=1, i",
+            "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "x-posthog-distinct-id": "5905f6b4-d74f-46b4-9b4f-9dbbccb29bee",
+            "x-posthog-session-id": "0199f71f-8c42-7f9a-ba3a-ff5999dd444a",
+            "x-posthog-window-id": "0199f71f-8c42-7f9a-ba3a-ff5ab5b20a8e",
+        }
+
+    def _prepare_payload(self, model: str, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+        return {
+            "messages": messages,
+            "tools": [],
+            "model": model,
+            "systemPrompt": "You are a helpful assistant."
+        }
+
+    async def get_models(self) -> JSONResponse:
+        model_data = {
+            "object": "list",
+            "data": [
+                {"id": name, "object": "model", "created": int(time.time()), "owned_by": "lzA6"}
+                for name in settings.KNOWN_MODELS
+            ]
+        }
+        return JSONResponse(content=model_data)
+
+
+--- 文件路径: app\services\session_manager.py ---
+
+from cachetools import TTLCache
+from typing import List, Dict, Any
+from app.core.config import settings
+
+class SessionManager:
+    def __init__(self):
+        self.cache = TTLCache(maxsize=1024, ttl=settings.SESSION_CACHE_TTL)
+
+    def get_messages(self, session_id: str) -> List[Dict[str, Any]]:
+        """
+        从缓存中获取消息历史。
+        返回列表的副本以防止对缓存的意外修改。
+        """
+        return self.cache.get(session_id, []).copy()
+
+    def update_messages(self, session_id: str, messages: List[Dict[str, Any]]):
+        """
+        将更新后的消息历史存回缓存。
+        """
+        self.cache[session_id] = messages
+
+
+--- 文件路径: app\services\tool_caller.py ---
+
+import json
+import logging
+import random
+from typing import List, Dict, Any
+import cloudscraper
+
+logger = logging.getLogger(__name__)
+
+class ToolCaller:
+    def __init__(self):
+        self.mcp_url = "https://mcp.exa.ai/mcp"
+        self.mcp_params = {
+            "profile": "joyous-gull-NeZ2gW",
+            "api_key": "fe5676be-931d-42e1-b5c9-90e94dce45ae"
+        }
+        self.scraper = cloudscraper.create_scraper()
+
+    def get_tool_definitions(self) -> List[Dict[str, Any]]:
+        # 从情报中提取的工具定义
+        return [
+            {"name":"resolve-library-id","title":"Resolve Context7 Library ID","description":"...","inputSchema":{}},
+            {"name":"get-library-docs","title":"Get Library Docs","description":"...","inputSchema":{}},
+            {"name":"web_search_exa","description":"...","inputSchema":{}},
+            {"name":"get_code_context_exa","description":"...","inputSchema":{}}
+        ]
+
+    async def execute_tools(self, tool_calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        # 此函数现在返回一个单一的用户消息，其中包含所有工具的结果
+        all_results_content = "Tool results:\n"
+        
+        for call in tool_calls:
+            function_call = call.get("function", {})
+            tool_name = function_call.get("name")
+            tool_args_str = function_call.get("arguments", "{}")
+            tool_call_id = call.get("id")
+
+            logger.info(f"执行工具调用: {tool_name} with args {tool_args_str}")
+            
+            try:
+                arguments = json.loads(tool_args_str)
+                payload = {
+                    "method": "tools/call",
+                    "params": {"name": tool_name, "arguments": arguments},
+                    "jsonrpc": "2.0",
+                    "id": random.randint(1, 100)
+                }
+                
+                response = self.scraper.post(self.mcp_url, params=self.mcp_params, json=payload)
+                response.raise_for_status()
+                
+                result_content = "No content returned."
+                for line in response.iter_lines():
+                    if line.startswith(b"data:"):
+                        content_str = line[len(b"data:"):].strip().decode('utf-8', errors='ignore')
+                        if content_str == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(content_str)
+                            if "result" in data and "content" in data["result"]:
+                                # 将结果格式化为更易读的字符串
+                                result_content = json.dumps(data["result"]["content"], ensure_ascii=False, indent=2)
+                                break
+                        except json.JSONDecodeError:
+                            logger.warning(f"MCP tool: 无法解析 SSE 数据块: {content_str}")
+                            continue
+                
+                all_results_content += f"\n--- Result for {tool_name} (call_id: {tool_call_id}) ---\n{result_content}\n"
+
+            except Exception as e:
+                logger.error(f"工具调用失败: {e}", exc_info=True)
+                error_str = f'{{"error": "Tool call failed", "details": "{str(e)}"}}'
+                all_results_content += f"\n--- Error for {tool_name} (call_id: {tool_call_id}) ---\n{error_str}\n"
+
+        # 返回一个单一的用户消息，而不是多个 tool 角色的消息
+        return [{"role": "user", "content": all_results_content}]
+
+
+--- 文件路径: app\utils\sse_utils.py ---
+
+import json
+import time
+from typing import Dict, Any, Optional
+
+DONE_CHUNK = b"data: [DONE]\n\n"
+
+def create_sse_data(data: Dict[str, Any]) -> bytes:
+    return f"data: {json.dumps(data)}\n\n".encode('utf-8')
+
+def create_chat_completion_chunk(
+    request_id: str,
+    model: str,
+    content: str,
+    finish_reason: Optional[str] = None
+) -> Dict[str, Any]:
+    return {
+        "id": request_id,
+        "object": "chat.completion.chunk",
+        "created": int(time.time()),
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "delta": {"content": content},
+                "finish_reason": finish_reason
+            }
+        ]
+    }
+
+
+
