@@ -25,6 +25,8 @@
 *   **💨 无状态设计** - 极致轻量，易于水平扩展，保护用户隐私
 *   **☁️ 穿透 Cloudflare** - 内置自动处理 Cloudflare 防护机制
 *   **📦 Docker 一键部署** - 一条命令即可启动服务
+*   **🛰️ Zeabur 云部署** - 内置 `PORT` 适配，几分钟完成上线
+*   **📊 请求监控面板** - 自带仪表盘实时查看耗时与 Token 消耗趋势
 *   **🔓 开源自由** - 采用 Apache 2.0 协议，自由使用、修改和分发
 
 ---
@@ -170,8 +172,13 @@ SMITHERY_COOKIE_1='{"access_token":"eyJ...","token_type":"bearer","expires_in":3
 SMITHERY_COOKIE_2='{"access_token":"eyJ...","token_type":"bearer","expires_in":3600,...}'
 
 # 服务端口配置
-NGINX_PORT=8088
 APP_PORT=8000
+
+# 指标持久化（可选）
+METRICS_DB_PATH="./data/metrics.sqlite"
+
+# 模型可见性配置持久化（可选）
+MODEL_VISIBILITY_PATH="./data/hidden_models.json"
 ```
 
 #### 步骤 4: 启动服务
@@ -185,9 +192,75 @@ docker-compose up -d
 使用 curl 测试服务是否正常运行：
 
 ```bash
-curl -X GET "http://localhost:8088/v1/models" \
+curl -X GET "http://localhost:8000/v1/models" \
   -H "Authorization: Bearer your-secure-master-key-here"
 ```
+
+## 💾 在 Zeabur 上启用持久化指标存储
+
+默认情况下，服务会将最近的请求指标保存在内存中。要在 Zeabur 上持久化这些数据，只需利用平台提供的 **Persistent Storage** 功能：
+
+1. **创建存储卷**
+   - 登录 [Zeabur 控制台](https://dash.zeabur.com/)，打开已部署的 `smithery-2api` 服务。
+   - 在左侧菜单中进入 **Storage**，点击 **New Storage** 按钮。
+   - 选择合适的容量（例如 1 GiB），并将 **Mount Path** 设置为 `/data`，确认创建。
+
+2. **绑定存储并重启服务**
+   - 创建完成后，在同一页面中点击 **Attach** 将存储卷挂载到当前服务实例。
+   - Zeabur 会自动触发一次重新部署，使容器内出现可读写的 `/data` 目录。
+
+3. **配置环境变量**
+   - 在服务的 **Environment Variables** 面板中新增：
+
+     ```env
+     METRICS_DB_PATH=/data/metrics.sqlite
+     ```
+
+   - 保存后再次部署即可。服务会在首次运行时自动创建并维护该 SQLite 数据库文件。
+
+4. **验证持久化是否生效**
+   - 访问 `/metrics/requests` 或 `/metrics/summary`，执行一两次 API 调用。
+   - 在 Zeabur 控制台中点击 **Restart** 重启服务，刷新仪表盘应仍能看到之前的调用记录。
+
+> ℹ️ 提示：如果希望在本地或 Docker 环境中测试持久化效果，可以提前创建目录并设置同样的环境变量，例如：
+>
+> ```bash
+> mkdir -p data
+> export METRICS_DB_PATH="$(pwd)/data/metrics.sqlite"
+> ```
+>
+> 之后启动应用即可在 `data/metrics.sqlite` 中查看到同样的指标数据。
+
+> ⚠️ 注意：SQLite 更适合单实例部署。如果需要在 Zeabur 上水平扩展到多实例，请为每个实例绑定独立的持久化卷，或改用专用数据库服务（如 PostgreSQL）。
+
+## 📊 请求监控面板
+
+项目自带一个零部署成本的 Web 仪表盘，可用于观察每一次请求的耗时、模型、Prompt/Completion Tokens 以及指定时间范围内的 Token 总消耗。
+
+1. 打开浏览器访问 `http://<你的服务域名>/dashboard`
+2. 在页面顶部填入用于访问 `/metrics/*` 的 Bearer Token（即 `.env` 中的 `API_MASTER_KEY`），点击 “保存密钥”
+3. 通过时间范围选择器（`datetime-local`）限定统计窗口，或直接使用默认的最近记录
+4. 点击 “刷新数据” 即可拉取实时指标；也可开启自动刷新功能，每 30 秒同步一次
+
+仪表盘会展示：
+
+- **单次请求表格**：完成时间、模型名称、Prompt/Completion/Total Token 数、耗时以及状态（失败请求会以红色醒目显示）
+- **汇总卡片**：统计时间窗口内的总请求数、成功率、输入输出 Token 累计值以及平均响应耗时
+
+> ⚠️ 指标存储位于内存，仅用于快速观测。如果需要长期留存或跨实例聚合，可基于 `/metrics/requests` 与 `/metrics/summary` 接口对接外部监控系统。
+
+### 模型可见性管理
+
+仪表盘新增了“模型可见性”管理区域，用于动态屏蔽不希望对外暴露的模型：
+
+1. 访问 `/dashboard`，在顶部输入 API 主密钥后点击“保存密钥”。
+2. 在“模型可见性”卡片中勾选需要屏蔽的模型并点击“保存模型设置”。
+3. 保存成功后，所选模型会立即从 `/v1/models` 响应中隐藏，且用户调用被屏蔽的模型时会返回 `403`，错误信息为 **“该模型暂时被屏蔽”**。
+
+> ℹ️ 服务会自动把最新配置写入 `MODEL_VISIBILITY_PATH` 指定的 JSON 文件，实现持久化。也可以直接通过接口管理：
+>
+> - `GET /settings/models/visibility`：查看所有模型及当前屏蔽状态
+> - `PUT /settings/models/visibility`：更新 `hidden_models` 数组（需携带 Bearer Token）
 
 ### 客户端配置示例
 
@@ -196,7 +269,7 @@ curl -X GET "http://localhost:8088/v1/models" \
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://localhost:8088/v1",
+    base_url="http://localhost:8000/v1",
     api_key="your-secure-master-key-here"
 )
 
@@ -208,9 +281,32 @@ response = client.chat.completions.create(
 ```
 
 **第三方应用配置**:
-- **Base URL**: `http://localhost:8088/v1`
+- **Base URL**: `http://localhost:8000/v1`
 - **API Key**: `your-secure-master-key-here`
 - **Model**: 任意支持的模型名称
+
+---
+
+## ☁️ Zeabur 部署指南
+
+1. **准备代码仓库**：将本项目 Fork/推送到自己的 GitHub 或 GitLab 仓库，确保 `Dockerfile` 和 `requirements.txt` 位于仓库根目录。
+2. **创建服务**：在 [Zeabur 控制台](https://dashboard.zeabur.com/) 新建项目，选择「Add Service」→「Git Repository」，关联上一步的仓库与分支。
+3. **构建配置**：保持默认的 Docker 构建流程，Zeabur 会自动识别项目中的 `Dockerfile`。无需额外的 Nginx 或反向代理配置。
+4. **启动命令**：在「Deploy Config」中确认启动命令为 `uvicorn main:app --host 0.0.0.0 --port $PORT`。平台会自动注入 `PORT` 环境变量，本项目已适配该端口。
+5. **环境变量**：在「Environment Variables」面板中新增：
+   - `API_MASTER_KEY`：用于客户端认证的主密钥
+   - `SMITHERY_COOKIE_1`：从浏览器复制的 Smithery 认证 JSON
+   - `SMITHERY_COOKIE_2`...（可选）：用于多账号轮询
+   - `SESSION_CACHE_TTL`（可选）：会话缓存时间，默认 3600 秒
+6. **部署与验证**：点击「Deploy」。当日志提示 `Application startup complete.` 后，即可通过分配的域名访问接口。
+7. **连通性测试**：
+
+```bash
+curl -X GET "https://<your-service>.zeabur.app/v1/models" \
+  -H "Authorization: Bearer ${API_MASTER_KEY}"
+```
+
+> ✅ 提示：Zeabur 默认开启 HTTPS，且不进行代理缓存。本项目在服务端关闭了 X-Accel 缓冲并优化了 SSE 推送，可确保聊天响应实时输出。
 
 ---
 
@@ -225,7 +321,6 @@ response = client.chat.completions.create(
 | **Cloudscraper** | 1.2+ | 反爬虫绕过 | Cloudflare 穿透 |
 | **Uvicorn** | 0.24+ | ASGI 服务器 | 高性能异步服务器 |
 | **Docker** | 20.10+ | 容器化 | 环境隔离，一键部署 |
-| **Nginx** | 1.24+ | 反向代理 | 负载均衡，静态文件服务 |
 
 ### 项目结构
 
@@ -245,7 +340,6 @@ smithery-2api/
 │   └── 📁 utils/                   # 工具函数
 │       └── sse_utils.py           # Server-Sent Events 工具
 ├── 📄 main.py                      # FastAPI 应用入口
-├── 📄 nginx.conf                   # Nginx 配置
 ├── 📄 Dockerfile                   # 应用镜像构建配置
 ├── 📄 docker-compose.yml           # 服务编排配置
 ├── 📄 requirements.txt             # Python 依赖
@@ -259,23 +353,40 @@ smithery-2api/
 ```python
 class Settings(BaseSettings):
     """应用配置类"""
-    API_MASTER_KEY: str
-    SMITHERY_COOKIE_1: Optional[str] = None
-    SMITHERY_COOKIE_2: Optional[str] = None
-    NGINX_PORT: int = 8088
-    APP_PORT: int = 8000
-    
-    @property
-    def AUTH_COOKIES(self) -> List[AuthCookie]:
-        """获取所有可用的认证 Cookie"""
-        cookies = []
-        for i in range(1, 3):
-            if cookie_str := getattr(self, f"SMITHERY_COOKIE_{i}", None):
+    API_MASTER_KEY: Optional[str] = None
+    AUTH_COOKIES: List[AuthCookie] = []
+    API_REQUEST_TIMEOUT: int = 180
+    SESSION_CACHE_TTL: int = 3600
+    DEFAULT_SERVICE_PORT: int = 8000
+
+    def __init__(self, **values):
+        super().__init__(**values)
+        i = 1
+        while True:
+            cookie_str = os.getenv(f"SMITHERY_COOKIE_{i}")
+            if cookie_str:
                 try:
-                    cookies.append(AuthCookie.parse_raw(cookie_str))
-                except ValidationError as e:
-                    logger.warning(f"Invalid cookie format for SMITHERY_COOKIE_{i}: {e}")
-        return cookies
+                    self.AUTH_COOKIES.append(AuthCookie(cookie_str))
+                except ValueError as e:
+                    logger.warning(f"无法加载或解析 SMITHERY_COOKIE_{i}: {e}")
+                i += 1
+            else:
+                break
+
+        if not self.AUTH_COOKIES:
+            raise ValueError("必须在 .env 文件中至少配置一个有效的 SMITHERY_COOKIE_1")
+
+    @property
+    def runtime_port(self) -> int:
+        """对外暴露的运行端口，兼容 Zeabur 的 PORT 环境变量"""
+        raw_port = os.getenv("PORT")
+        if not raw_port:
+            return self.DEFAULT_SERVICE_PORT
+        try:
+            return int(raw_port)
+        except ValueError:
+            logger.warning("PORT 环境变量不是有效的整数，已回退到默认端口 %s", self.DEFAULT_SERVICE_PORT)
+            return self.DEFAULT_SERVICE_PORT
 
 settings = Settings()
 ```
@@ -342,29 +453,6 @@ MODEL_MAPPING = {
 }
 ```
 
-### Nginx 优化配置
-
-```nginx
-# nginx.conf
-server {
-    listen 8088;
-    client_max_body_size 100M;
-    client_body_timeout 300s;
-    
-    location / {
-        proxy_pass http://app:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        
-        # 流式响应相关配置
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_read_timeout 300s;
-    }
-}
-```
-
 ---
 
 ## 🐛 故障排除
@@ -402,12 +490,22 @@ logging.basicConfig(level=logging.DEBUG)
 
 ```bash
 # 检查服务状态
-curl -X GET "http://localhost:8088/health"
+curl -X GET "http://localhost:8000/health"
 
 # 检查模型列表
-curl -X GET "http://localhost:8088/v1/models" \
+curl -X GET "http://localhost:8000/v1/models" \
   -H "Authorization: Bearer your-api-key"
 ```
+
+---
+
+## 🆕 最近更新
+
+> **2025-10-22**
+
+- ✨ 修复 SSE 数据块缓冲导致的“伪流式”问题，现在回复将实时推送。
+- 🧹 精简 Docker Compose，移除多余的 Nginx 转发层，默认直接暴露 FastAPI 服务。
+- ☁️ 新增 Zeabur 部署流程说明，并默认兼容平台注入的 `PORT` 变量。
 
 ---
 

@@ -7,19 +7,49 @@ from typing import List, Optional, Dict
 # 获取一个日志记录器实例
 logger = logging.getLogger(__name__)
 
+def _mask_email(email: Optional[str]) -> Optional[str]:
+    """Mask an email address as ``xx**xx@domain`` style output."""
+
+    if not email or "@" not in email:
+        return None
+
+    local, _, domain = email.partition("@")
+    if not local or not domain:
+        return None
+
+    prefix = (local[:2] or "xx").ljust(2, "x")
+    if len(local) >= 2:
+        suffix_source = local[-2:]
+    elif len(local) == 1:
+        suffix_source = (local[-1] + "x")
+    else:
+        suffix_source = "xx"
+
+    suffix = suffix_source.ljust(2, "x")
+    masked_local = f"{prefix}**{suffix}"
+    return f"{masked_local}@{domain}"
+
+
 class AuthCookie:
     """
     处理并生成 Smithery.ai 所需的认证 Cookie。
     它将 .env 文件中的 JSON 字符串转换为一个标准的 HTTP Cookie 头部字符串。
     """
-    def __init__(self, json_string: str):
+
+    def __init__(self, json_string: str, name: Optional[str] = None):
         try:
             # 1. 解析从 .env 文件读取的 JSON 字符串
             data = json.loads(json_string)
             self.access_token = data.get("access_token")
             self.refresh_token = data.get("refresh_token")
             self.expires_at = data.get("expires_at", 0)
-            
+            self.user = data.get("user")
+            self.email = None
+            if isinstance(self.user, dict):
+                self.email = self.user.get("email")
+            self.masked_email = _mask_email(self.email)
+            self.name = name or "SMITHERY_COOKIE"
+
             if not self.access_token:
                 raise ValueError("Cookie JSON 中缺少 'access_token'")
 
@@ -73,14 +103,25 @@ class Settings(BaseSettings):
     AUTH_COOKIES: List[AuthCookie] = []
 
     API_REQUEST_TIMEOUT: int = 180
-    NGINX_PORT: int = 8088
     SESSION_CACHE_TTL: int = 3600
 
+    DEFAULT_SERVICE_PORT: int = 8000
+
+    METRICS_DB_PATH: Optional[str] = None
+    METRICS_MAX_IN_MEMORY_RECORDS: int = 5000
+
     KNOWN_MODELS: List[str] = [
-        "claude-haiku-4.5", "claude-sonnet-4.5", "gpt-5", "gpt-5-mini", 
-        "gpt-5-nano", "gemini-2.5-flash-lite", "gemini-2.5-pro", "glm-4.6", 
+        "claude-haiku-4.5", "claude-sonnet-4.5", "gpt-5", "gpt-5-mini",
+        "gpt-5-nano", "gemini-2.5-flash-lite", "gemini-2.5-pro", "glm-4.6",
         "grok-4-fast-non-reasoning", "grok-4-fast-reasoning", "kimi-k2", "deepseek-reasoner"
     ]
+
+    HIDDEN_MODELS: List[str] = [
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-pro",
+    ]
+
+    MODEL_VISIBILITY_PATH: Optional[str] = "./data/hidden_models.json"
 
     def __init__(self, **values):
         super().__init__(**values)
@@ -91,7 +132,7 @@ class Settings(BaseSettings):
             if cookie_str:
                 try:
                     # 使用 AuthCookie 类来解析和处理 cookie 字符串
-                    self.AUTH_COOKIES.append(AuthCookie(cookie_str))
+                    self.AUTH_COOKIES.append(AuthCookie(cookie_str, name=f"SMITHERY_COOKIE_{i}"))
                 except ValueError as e:
                     logger.warning(f"无法加载或解析 SMITHERY_COOKIE_{i}: {e}")
                 i += 1
@@ -100,5 +141,27 @@ class Settings(BaseSettings):
         
         if not self.AUTH_COOKIES:
             raise ValueError("必须在 .env 文件中至少配置一个有效的 SMITHERY_COOKIE_1")
+
+    @property
+    def runtime_port(self) -> int:
+        """获取当前运行时使用的对外端口，兼容 Zeabur 等平台的 PORT 环境变量。"""
+        raw_port = os.getenv("PORT")
+        if not raw_port:
+            return self.DEFAULT_SERVICE_PORT
+        try:
+            return int(raw_port)
+        except ValueError:
+            logger.warning("PORT 环境变量不是有效的整数，已回退到默认端口 %s", self.DEFAULT_SERVICE_PORT)
+            return self.DEFAULT_SERVICE_PORT
+
+    @property
+    def visible_models(self) -> List[str]:
+        try:
+            from app.services.model_visibility_store import model_visibility_store
+
+            return model_visibility_store.visible_models
+        except Exception:
+            hidden = set(self.HIDDEN_MODELS)
+            return [name for name in self.KNOWN_MODELS if name not in hidden]
 
 settings = Settings()

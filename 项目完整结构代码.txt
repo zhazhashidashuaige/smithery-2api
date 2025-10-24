@@ -5,7 +5,6 @@
     📄 Dockerfile
     📄 docker-compose.yml
     📄 main.py
-    📄 nginx.conf
     📄 requirements.txt
     📂 app/
         📂 core/
@@ -16,9 +15,13 @@
             📄 base_provider.py
             📄 smithery_provider.py
         📂 services/
+            📄 metrics_store.py
             📄 session_manager.py
             📄 tool_caller.py
+        📂 frontend/
+            📄 dashboard.html
         📂 utils/
+            📄 token_counter.py
             📄 sse_utils.py
 ================================================================================
 
@@ -32,8 +35,8 @@
 API_MASTER_KEY=1
 
 # --- 端口配置 ---
-# Nginx 对外暴露的端口
-NGINX_PORT=8088
+# FastAPI 对外暴露的端口（Docker Compose 可选配置）
+APP_PORT=8000
 
 # --- Smithery.ai 凭证 (支持多账号) ---
 # 格式已根据最终方案自动转换。请勿手动修改此 JSON 结构。
@@ -59,8 +62,8 @@ SESSION_CACHE_TTL=3600
 API_MASTER_KEY=sk-smithery-2api-default-key-please-change-me
 
 # --- 部署配置 (可选) ---
-# Nginx 对外暴露的端口
-NGINX_PORT=8088
+# FastAPI 对外暴露的端口（Docker Compose 可选配置）
+APP_PORT=8000
 
 # --- Smithery.ai 凭证 (必须设置) ---
 # 请从浏览器开发者工具中获取完整的 Cookie 字符串。
@@ -100,25 +103,12 @@ USER appuser
 
 # 暴露端口并启动
 EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
 
 
 --- 文件路径: docker-compose.yml ---
 
 services:
-  nginx:
-    image: nginx:latest
-    container_name: smithery-2api-nginx
-    restart: always
-    ports:
-      - "${NGINX_PORT:-8088}:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - app
-    networks:
-      - smithery-net
-
   app:
     build:
       context: .
@@ -127,25 +117,24 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    networks:
-      - smithery-net
-
-networks:
-  smithery-net:
-    driver: bridge
+    ports:
+      - "${APP_PORT:-8000}:8000"
 
 
 --- 文件路径: main.py ---
-
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Request, HTTPException, Depends, Header
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import FastAPI, Request, HTTPException, Depends, Header, Query
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from app.core.config import settings
 from app.providers.smithery_provider import SmitheryProvider
+from app.services.metrics_store import metrics_store
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -156,7 +145,10 @@ provider = SmitheryProvider()
 async def lifespan(app: FastAPI):
     logger.info(f"应用启动中... {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info("服务已进入 'Cloudscraper' 模式，将自动处理 Cloudflare 挑战。")
-    logger.info(f"服务将在 http://localhost:{settings.NGINX_PORT} 上可用")
+    logger.info(
+        "服务将在 http://0.0.0.0:%s 上可用 (可通过 PORT 环境变量覆盖)",
+        settings.runtime_port,
+    )
     yield
     logger.info("应用关闭。")
 
@@ -166,6 +158,44 @@ app = FastAPI(
     description=settings.DESCRIPTION,
     lifespan=lifespan
 )
+
+
+@lru_cache()
+def _load_dashboard_html() -> str:
+    dashboard_path = Path(__file__).resolve().parent / "app" / "frontend" / "dashboard.html"
+    if dashboard_path.exists():
+        return dashboard_path.read_text(encoding="utf-8")
+    logger.warning("未找到 dashboard.html，返回占位页面。")
+    return "<html><body><h1>Dashboard 未找到</h1></body></html>"
+
+
+def _parse_time_param(value: Optional[str]) -> Optional[float]:
+    if value is None:
+        return None
+
+    candidate = value.strip()
+    if not candidate:
+        return None
+
+    try:
+        normalized = candidate.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(normalized)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt.timestamp()
+    except ValueError:
+        try:
+            return float(candidate)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"无法解析时间参数: {value}") from exc
+
+
+def _to_iso(timestamp: Optional[float]) -> Optional[str]:
+    if timestamp is None:
+        return None
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
 
 async def verify_api_key(authorization: Optional[str] = Header(None)):
     if settings.API_MASTER_KEY and settings.API_MASTER_KEY != "1":
@@ -188,44 +218,70 @@ async def chat_completions(request: Request) -> StreamingResponse:
 async def list_models():
     return await provider.get_models()
 
+
+@app.get("/metrics/requests", dependencies=[Depends(verify_api_key)], response_class=JSONResponse)
+async def get_request_metrics(
+    start: Optional[str] = Query(None, description="起始时间 (ISO8601 或 UNIX 秒)"),
+    end: Optional[str] = Query(None, description="结束时间 (ISO8601 或 UNIX 秒)"),
+    limit: int = Query(100, ge=1, le=1000, description="返回记录的最大条数 (默认 100)"),
+):
+    start_ts = _parse_time_param(start)
+    end_ts = _parse_time_param(end)
+
+    if start_ts and end_ts and start_ts > end_ts:
+        raise HTTPException(status_code=400, detail="起始时间不能晚于结束时间。")
+
+    records = metrics_store.list_records(start=start_ts, end=end_ts)
+    records.sort(key=lambda item: item.get("completed_at") or 0, reverse=True)
+    if limit:
+        records = records[:limit]
+
+    formatted = []
+    for record in records:
+        formatted.append({
+            "id": record.get("id"),
+            "model": record.get("model"),
+            "prompt_tokens": record.get("prompt_tokens", 0),
+            "completion_tokens": record.get("completion_tokens", 0),
+            "total_tokens": record.get("total_tokens", 0),
+            "duration_ms": record.get("duration_ms", 0.0),
+            "status": record.get("status", "unknown"),
+            "error_message": record.get("error_message"),
+            "started_at": _to_iso(record.get("started_at")),
+            "completed_at": _to_iso(record.get("completed_at")),
+        })
+
+    return JSONResponse(content={"data": formatted})
+
+
+@app.get("/metrics/summary", dependencies=[Depends(verify_api_key)], response_class=JSONResponse)
+async def get_metrics_summary(
+    start: Optional[str] = Query(None, description="起始时间 (ISO8601 或 UNIX 秒)"),
+    end: Optional[str] = Query(None, description="结束时间 (ISO8601 或 UNIX 秒)"),
+):
+    start_ts = _parse_time_param(start)
+    end_ts = _parse_time_param(end)
+
+    if start_ts and end_ts and start_ts > end_ts:
+        raise HTTPException(status_code=400, detail="起始时间不能晚于结束时间。")
+
+    summary = metrics_store.aggregate(start=start_ts, end=end_ts)
+    summary.update({
+        "window_start": _to_iso(start_ts) if start_ts else None,
+        "window_end": _to_iso(end_ts) if end_ts else None,
+    })
+
+    return JSONResponse(content=summary)
+
+
+@app.get("/dashboard", summary="可视化监控面板", response_class=HTMLResponse)
+async def dashboard() -> HTMLResponse:
+    return HTMLResponse(content=_load_dashboard_html())
+
+
 @app.get("/", summary="根路径")
 def root():
     return {"message": f"欢迎来到 {settings.APP_NAME} v{settings.APP_VERSION}. 服务运行正常。"}
-
-
---- 文件路径: nginx.conf ---
-
-worker_processes auto;
-
-events {
-    worker_connections 1024;
-}
-
-http {
-    upstream smithery_backend {
-        server app:8000;
-    }
-
-    server {
-        listen 80;
-        server_name localhost;
-
-        location / {
-            proxy_pass http://smithery_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            
-            proxy_buffering off;
-            proxy_cache off;
-            proxy_set_header Connection '';
-            proxy_http_version 1.1;
-            chunked_transfer_encoding off;
-        }
-    }
-}
-
 
 --- 文件路径: requirements.txt ---
 
@@ -236,6 +292,7 @@ python-dotenv
 cloudscraper
 cachetools
 httpx
+tiktoken
 
 
 --- 文件路径: app\core\__init__.py ---
@@ -319,8 +376,9 @@ class Settings(BaseSettings):
     AUTH_COOKIES: List[AuthCookie] = []
 
     API_REQUEST_TIMEOUT: int = 180
-    NGINX_PORT: int = 8088
     SESSION_CACHE_TTL: int = 3600
+
+    DEFAULT_SERVICE_PORT: int = 8000
 
     KNOWN_MODELS: List[str] = [
         "claude-haiku-4.5", "claude-sonnet-4.5", "gpt-5", "gpt-5-mini", 
@@ -346,6 +404,17 @@ class Settings(BaseSettings):
         
         if not self.AUTH_COOKIES:
             raise ValueError("必须在 .env 文件中至少配置一个有效的 SMITHERY_COOKIE_1")
+
+    @property
+    def runtime_port(self) -> int:
+        raw_port = os.getenv("PORT")
+        if not raw_port:
+            return self.DEFAULT_SERVICE_PORT
+        try:
+            return int(raw_port)
+        except ValueError:
+            logger.warning("PORT 环境变量不是有效的整数，已回退到默认端口 %s", self.DEFAULT_SERVICE_PORT)
+            return self.DEFAULT_SERVICE_PORT
 
 settings = Settings()
 
@@ -374,23 +443,23 @@ class BaseProvider(ABC):
 
 
 --- 文件路径: app\providers\smithery_provider.py ---
-
+import asyncio
 import json
 import time
 import logging
 import uuid
-import random
 import cloudscraper
 from typing import Dict, Any, AsyncGenerator, List
 
-from fastapi import HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 
 from app.core.config import settings
 from app.providers.base_provider import BaseProvider
 # 移除了不再使用的 SessionManager
 # from app.services.session_manager import SessionManager
+from app.services.metrics_store import metrics_store
 from app.utils.sse_utils import create_sse_data, create_chat_completion_chunk, DONE_CHUNK
+from app.utils.token_counter import estimate_tokens_for_messages, estimate_tokens_for_text
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - [%(levelname)s] - %(message)s')
 logger = logging.getLogger(__name__)
@@ -436,19 +505,29 @@ class SmitheryProvider(BaseProvider):
         
         # 1. 直接从客户端请求中获取完整的消息历史
         messages_from_client = request_data.get("messages", [])
+        if not isinstance(messages_from_client, list):
+            messages_from_client = []
         
         # 2. 将其转换为 Smithery.ai 后端所需的格式
         smithery_formatted_messages = self._convert_messages_to_smithery_format(messages_from_client)
 
+        model = request_data.get("model", "claude-haiku-4.5")
+        request_id = f"chatcmpl-{uuid.uuid4()}"
+        prompt_tokens = estimate_tokens_for_messages(messages_from_client, model)
+        start_time = time.time()
+        collected_output: List[str] = []
+        status = "success"
+        error_message: str | None = None
+
         async def stream_generator() -> AsyncGenerator[bytes, None]:
-            request_id = f"chatcmpl-{uuid.uuid4()}"
-            model = request_data.get("model", "claude-haiku-4.5")
-            
+            nonlocal status, error_message
+            response = None
+
             try:
                 # 3. 使用转换后的消息列表准备请求体
                 payload = self._prepare_payload(model, smithery_formatted_messages)
                 headers = self._prepare_headers()
-                
+
                 logger.info("===================== [REQUEST TO SMITHERY (Stateless)] =====================")
                 logger.info(f"URL: POST {settings.CHAT_API_URL}")
                 logger.info(f"PAYLOAD:\n{json.dumps(payload, indent=2, ensure_ascii=False)}")
@@ -456,10 +535,10 @@ class SmitheryProvider(BaseProvider):
 
                 # 使用 cloudscraper 发送请求
                 response = self.scraper.post(
-                    settings.CHAT_API_URL, 
-                    headers=headers, 
-                    json=payload, 
-                    stream=True, 
+                    settings.CHAT_API_URL,
+                    headers=headers,
+                    json=payload,
+                    stream=True,
                     timeout=settings.API_REQUEST_TIMEOUT
                 )
 
@@ -468,39 +547,99 @@ class SmitheryProvider(BaseProvider):
                     logger.error(f"STATUS CODE: {response.status_code}")
                     logger.error(f"RESPONSE BODY:\n{response.text}")
                     logger.error("=================================================================")
-                
+
                 response.raise_for_status()
 
-                # 4. 流式处理返回的数据 (此部分逻辑不变)
-                for line in response.iter_lines():
-                    if line.startswith(b"data:"):
-                        content = line[len(b"data:"):].strip()
-                        if content == b"[DONE]":
-                            break
-                        try:
-                            data = json.loads(content)
-                            if data.get("type") == "text-delta":
-                                delta_content = data.get("delta", "")
-                                chunk = create_chat_completion_chunk(request_id, model, delta_content)
-                                yield create_sse_data(chunk)
-                        except json.JSONDecodeError:
-                            if content:
-                                logger.warning(f"无法解析 SSE 数据块: {content}")
-                            continue
-                
+                # 4. 流式处理返回的数据，确保按到达顺序即时推送给客户端
+                for raw_line in response.iter_lines(chunk_size=1):
+                    if not raw_line:
+                        # 主动让出事件循环，避免长时间占用导致缓冲
+                        await asyncio.sleep(0)
+                        continue
+
+                    line = raw_line.decode("utf-8", errors="ignore") if isinstance(raw_line, bytes) else raw_line
+                    if not line.startswith("data:"):
+                        continue
+
+                    content = line[len("data:"):].strip()
+                    if content == "[DONE]":
+                        break
+
+                    try:
+                        data = json.loads(content)
+                    except json.JSONDecodeError:
+                        logger.warning("无法解析 SSE 数据块: %s", content)
+                        continue
+
+                    if data.get("type") == "text-delta":
+                        delta_payload = data.get("delta", "")
+                        if isinstance(delta_payload, dict):
+                            delta_content = delta_payload.get("text", "")
+                        else:
+                            delta_content = delta_payload
+
+                        if isinstance(delta_content, str):
+                            collected_output.append(delta_content)
+                        else:
+                            normalized = str(delta_content)
+                            collected_output.append(normalized)
+                            delta_content = normalized
+
+                        chunk = create_chat_completion_chunk(request_id, model, delta_content)
+                        yield create_sse_data(chunk)
+                        await asyncio.sleep(0)
+
                 # 5. 无状态模式下，无需保存任何会话，直接发送结束标志
                 final_chunk = create_chat_completion_chunk(request_id, model, "", "stop")
                 yield create_sse_data(final_chunk)
+                await asyncio.sleep(0)
                 yield DONE_CHUNK
 
             except Exception as e:
                 logger.error(f"处理流时发生错误: {e}", exc_info=True)
-                error_message = f"内部服务器错误: {str(e)}"
-                error_chunk = create_chat_completion_chunk(request_id, model, error_message, "stop")
+                status = "error"
+                error_message = str(e)
+                safe_error_message = f"内部服务器错误: {str(e)}"
+                error_chunk = create_chat_completion_chunk(request_id, model, safe_error_message, "stop")
                 yield create_sse_data(error_chunk)
                 yield DONE_CHUNK
 
-        return StreamingResponse(stream_generator(), media_type="text/event-stream")
+            finally:
+                completed_at = time.time()
+                completion_text = "".join(collected_output)
+                completion_tokens = estimate_tokens_for_text(completion_text, model)
+                duration_ms = (completed_at - start_time) * 1000
+
+                record = {
+                    "id": request_id,
+                    "model": model,
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                    "started_at": start_time,
+                    "completed_at": completed_at,
+                    "duration_ms": duration_ms,
+                    "status": status,
+                    "error_message": error_message,
+                }
+
+                try:
+                    metrics_store.add_record(record)
+                except Exception:
+                    logger.exception("记录请求指标失败")
+
+                if response is not None:
+                    response.close()
+
+        return StreamingResponse(
+            stream_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     def _prepare_headers(self) -> Dict[str, str]:
         # 包含我们之前分析出的所有必要请求头
@@ -541,7 +680,6 @@ class SmitheryProvider(BaseProvider):
             ]
         }
         return JSONResponse(content=model_data)
-
 
 --- 文件路径: app\services\session_manager.py ---
 
@@ -677,5 +815,658 @@ def create_chat_completion_chunk(
         ]
     }
 
+--- 文件路径: app\services\metrics_store.py ---
+"""In-memory metrics collection for Smithery proxy requests."""
+from __future__ import annotations
 
+from collections import deque
+from threading import Lock
+from typing import Deque, Dict, List, Optional
+
+
+class MetricsStore:
+    """Thread-safe ring buffer storing recent request metrics."""
+
+    def __init__(self, max_records: int = 1000):
+        self._records: Deque[Dict] = deque(maxlen=max_records)
+        self._lock = Lock()
+
+    def add_record(self, record: Dict) -> None:
+        with self._lock:
+            self._records.append(record)
+
+    def list_records(
+        self,
+        start: Optional[float] = None,
+        end: Optional[float] = None,
+    ) -> List[Dict]:
+        with self._lock:
+            snapshot = list(self._records)
+
+        if start is None and end is None:
+            return snapshot
+
+        filtered: List[Dict] = []
+        for record in snapshot:
+            completed_at = record.get("completed_at")
+            if completed_at is None:
+                continue
+            if start is not None and completed_at < start:
+                continue
+            if end is not None and completed_at > end:
+                continue
+            filtered.append(record)
+        return filtered
+
+    def aggregate(
+        self,
+        start: Optional[float] = None,
+        end: Optional[float] = None,
+    ) -> Dict[str, float]:
+        records = self.list_records(start=start, end=end)
+
+        prompt_tokens = sum(record.get("prompt_tokens", 0) for record in records)
+        completion_tokens = sum(record.get("completion_tokens", 0) for record in records)
+        total_tokens = prompt_tokens + completion_tokens
+
+        request_count = len(records)
+        success_count = sum(1 for record in records if record.get("status") == "success")
+        error_count = request_count - success_count
+
+        latencies = []
+        for record in records:
+            duration = record.get("duration_ms")
+            if isinstance(duration, (int, float)):
+                latencies.append(float(duration))
+        average_latency_ms = sum(latencies) / len(latencies) if latencies else 0.0
+
+        return {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "request_count": request_count,
+            "success_count": success_count,
+            "error_count": error_count,
+            "average_latency_ms": average_latency_ms,
+        }
+
+
+metrics_store = MetricsStore(max_records=5000)
+
+--- 文件路径: app\utils\token_counter.py ---
+"""Utilities for estimating prompt and completion token counts."""
+from __future__ import annotations
+
+import re
+from typing import Iterable, Dict, Any
+
+try:
+    import tiktoken  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    tiktoken = None  # type: ignore
+
+_DEFAULT_ENCODING = "cl100k_base"
+_TOKEN_PATTERN = re.compile(r"\w+|[^\w\s]", re.UNICODE)
+
+
+def _estimate_with_tiktoken(text: str, model: str) -> int | None:
+    if not tiktoken:
+        return None
+
+    encoding = None
+    if model:
+        try:
+            encoding = tiktoken.encoding_for_model(model)
+        except KeyError:
+            encoding = None
+        except Exception:
+            encoding = None
+    if encoding is None:
+        try:
+            encoding = tiktoken.get_encoding(_DEFAULT_ENCODING)
+        except Exception:
+            return None
+
+    try:
+        return len(encoding.encode(text))
+    except Exception:
+        return None
+
+
+def estimate_tokens_for_text(text: str, model: str = "") -> int:
+    """Estimate the token count for a block of text.
+
+    Attempts to use ``tiktoken`` when available for accurate counts on OpenAI
+    compatible models. Falls back to a lightweight heuristic otherwise.
+    """
+
+    if not text:
+        return 0
+
+    normalized_text = text.strip()
+    if not normalized_text:
+        return 0
+
+    tiktoken_estimate = _estimate_with_tiktoken(normalized_text, model)
+    if tiktoken_estimate is not None:
+        return tiktoken_estimate
+
+    heuristic_tokens = _TOKEN_PATTERN.findall(normalized_text)
+    if heuristic_tokens:
+        return len(heuristic_tokens)
+
+    # Final safety net: assume roughly 4 characters per token as a heuristic.
+    return max(1, len(normalized_text) // 4)
+
+
+def estimate_tokens_for_messages(messages: Iterable[Dict[str, Any]], model: str = "") -> int:
+    """Estimate token usage for a list of OpenAI-style messages."""
+
+    total = 0
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            total += estimate_tokens_for_text(content, model)
+    return total
+
+--- 文件路径: app\frontend\dashboard.html ---
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Smithery 监控面板</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg-color: #f5f7fb;
+            --text-color: #1c1f2b;
+            --card-bg: #ffffff;
+            --accent: #0066ff;
+            --muted: #6b7280;
+            --danger: #dc2626;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #0f172a;
+                --text-color: #e2e8f0;
+                --card-bg: #111827;
+                --accent: #60a5fa;
+                --muted: #94a3b8;
+                --danger: #f87171;
+            }
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 32px 20px 60px;
+        }
+
+        header {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 28px;
+        }
+
+        header h1 {
+            font-size: 2rem;
+            margin: 0;
+        }
+
+        header p {
+            margin: 0;
+            color: var(--muted);
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 14px;
+            padding: 18px 20px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .card span.label {
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+        }
+
+        .card strong {
+            font-size: 1.8rem;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+            align-items: end;
+        }
+
+        .controls label {
+            font-size: 0.85rem;
+            color: var(--muted);
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .controls input, .controls button {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: var(--card-bg);
+            color: var(--text-color);
+            box-sizing: border-box;
+        }
+
+        .controls button {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.1s ease, box-shadow 0.15s ease;
+        }
+
+        .controls button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
+        }
+
+        .controls button.secondary {
+            background: transparent;
+            color: var(--accent);
+            border: 1px solid var(--accent);
+        }
+
+        .status-bar {
+            margin-bottom: 18px;
+            font-size: 0.9rem;
+            color: var(--muted);
+            min-height: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            border-radius: 14px;
+            overflow: hidden;
+            background: var(--card-bg);
+            box-shadow: 0 16px 30px rgba(15, 23, 42, 0.08);
+        }
+
+        table th, table td {
+            padding: 14px 16px;
+            text-align: left;
+            font-size: 0.92rem;
+        }
+
+        table thead {
+            background: rgba(96, 165, 250, 0.18);
+            color: var(--text-color);
+        }
+
+        table tbody tr:not(:last-child) {
+            border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+        }
+
+        table tbody tr.error {
+            background: rgba(220, 38, 38, 0.08);
+        }
+
+        .api-key-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 24px;
+            background: var(--card-bg);
+            padding: 16px 20px;
+            border-radius: 14px;
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+        }
+
+        .api-key-wrapper label {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+
+        .api-key-wrapper input {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: var(--card-bg);
+            color: var(--text-color);
+        }
+
+        .api-key-wrapper button {
+            align-self: flex-start;
+            padding: 8px 16px;
+            border-radius: 10px;
+            border: none;
+            background: var(--accent);
+            color: #fff;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .empty-state {
+            padding: 28px;
+            text-align: center;
+            color: var(--muted);
+        }
+
+        .error-text {
+            color: var(--danger);
+            font-weight: 600;
+        }
+
+        @media (max-width: 720px) {
+            header h1 {
+                font-size: 1.5rem;
+            }
+            .card strong {
+                font-size: 1.5rem;
+            }
+            table th, table td {
+                padding: 10px 12px;
+                font-size: 0.85rem;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>Smithery 请求监控</h1>
+        <p>实时洞察请求耗时、模型 token 使用情况以及整体消耗趋势。</p>
+    </header>
+
+    <section class="api-key-wrapper">
+        <label for="apiKeyInput">用于访问 /metrics 接口的 Bearer Token：</label>
+        <input id="apiKeyInput" type="password" placeholder="sk-...">
+        <button id="saveKey">保存密钥</button>
+        <small id="keyStatus" class="status-bar"></small>
+    </section>
+
+    <section class="controls">
+        <div>
+            <label for="startInput">起始时间 (本地时区)</label>
+            <input type="datetime-local" id="startInput">
+        </div>
+        <div>
+            <label for="endInput">结束时间 (本地时区)</label>
+            <input type="datetime-local" id="endInput">
+        </div>
+        <div>
+            <label for="limitInput">最多返回条数</label>
+            <input type="number" id="limitInput" value="100" min="1" max="1000">
+        </div>
+        <div>
+            <button id="refreshButton">刷新数据</button>
+        </div>
+        <div>
+            <button id="autoRefreshButton" class="secondary">开启自动刷新</button>
+        </div>
+    </section>
+
+    <div class="status-bar" id="statusBar"></div>
+
+    <section class="card-grid" id="summaryCards">
+        <article class="card">
+            <span class="label">请求数量</span>
+            <strong id="requestCount">0</strong>
+            <span class="label" id="successRatio">成功率 0%</span>
+        </article>
+        <article class="card">
+            <span class="label">Prompt Tokens</span>
+            <strong id="promptTokens">0</strong>
+            <span class="label">累计输入</span>
+        </article>
+        <article class="card">
+            <span class="label">Completion Tokens</span>
+            <strong id="completionTokens">0</strong>
+            <span class="label">累计输出</span>
+        </article>
+        <article class="card">
+            <span class="label">Token 总量</span>
+            <strong id="totalTokens">0</strong>
+            <span class="label">平均耗时 <span id="avgLatency">0 ms</span></span>
+        </article>
+    </section>
+
+    <section>
+        <table>
+            <thead>
+            <tr>
+                <th>完成时间</th>
+                <th>模型</th>
+                <th>Prompt</th>
+                <th>Completion</th>
+                <th>Total</th>
+                <th>耗时 (ms)</th>
+                <th>状态</th>
+            </tr>
+            </thead>
+            <tbody id="metricsTableBody">
+            <tr class="empty-state">
+                <td colspan="7">暂无数据，请先发起一次请求或调整时间范围。</td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+</div>
+
+<script>
+    const statusBar = document.getElementById('statusBar');
+    const requestCountEl = document.getElementById('requestCount');
+    const successRatioEl = document.getElementById('successRatio');
+    const promptTokensEl = document.getElementById('promptTokens');
+    const completionTokensEl = document.getElementById('completionTokens');
+    const totalTokensEl = document.getElementById('totalTokens');
+    const avgLatencyEl = document.getElementById('avgLatency');
+    const tableBody = document.getElementById('metricsTableBody');
+    const apiKeyInput = document.getElementById('apiKeyInput');
+    const saveKeyButton = document.getElementById('saveKey');
+    const keyStatus = document.getElementById('keyStatus');
+    const refreshButton = document.getElementById('refreshButton');
+    const autoRefreshButton = document.getElementById('autoRefreshButton');
+    const limitInput = document.getElementById('limitInput');
+    const startInput = document.getElementById('startInput');
+    const endInput = document.getElementById('endInput');
+
+    let autoRefreshTimer = null;
+
+    function setStatus(message, isError = false) {
+        statusBar.textContent = message || '';
+        statusBar.classList.toggle('error-text', isError);
+    }
+
+    function loadStoredKey() {
+        const stored = localStorage.getItem('smithery-dashboard-key');
+        if (stored) {
+            apiKeyInput.value = stored;
+            keyStatus.textContent = '已从浏览器存储中加载密钥。';
+        }
+    }
+
+    function storeKey() {
+        const value = apiKeyInput.value.trim();
+        if (!value) {
+            keyStatus.textContent = '请输入有效的密钥。';
+            keyStatus.classList.add('error-text');
+            return;
+        }
+        localStorage.setItem('smithery-dashboard-key', value);
+        keyStatus.textContent = '密钥已保存到浏览器，仅当前设备可见。';
+        keyStatus.classList.remove('error-text');
+    }
+
+    async function apiFetch(path) {
+        const headers = new Headers();
+        headers.append('Accept', 'application/json');
+        const key = apiKeyInput.value.trim() || localStorage.getItem('smithery-dashboard-key');
+        if (key) {
+            headers.append('Authorization', `Bearer ${key}`);
+        }
+        const response = await fetch(path, { headers });
+        if (!response.ok) {
+            const message = await response.text();
+            throw new Error(`接口请求失败: ${response.status} ${message}`);
+        }
+        return response.json();
+    }
+
+    function toIsoString(value) {
+        if (!value) {
+            return null;
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return null;
+        }
+        return date.toISOString();
+    }
+
+    function formatNumber(value) {
+        return Number(value || 0).toLocaleString();
+    }
+
+    function renderSummary(summary) {
+        const requestCount = summary.request_count || 0;
+        const successCount = summary.success_count || 0;
+        const errorCount = summary.error_count || 0;
+        const totalTokens = summary.total_tokens || 0;
+
+        const successRate = requestCount === 0 ? 0 : Math.round((successCount / requestCount) * 100);
+
+        requestCountEl.textContent = formatNumber(requestCount);
+        successRatioEl.textContent = `成功率 ${successRate}% (失败 ${formatNumber(errorCount)} 次)`;
+        promptTokensEl.textContent = formatNumber(summary.prompt_tokens || 0);
+        completionTokensEl.textContent = formatNumber(summary.completion_tokens || 0);
+        totalTokensEl.textContent = formatNumber(totalTokens);
+        avgLatencyEl.textContent = `${Math.round(summary.average_latency_ms || 0)} ms`;
+    }
+
+    function renderTable(records) {
+        tableBody.innerHTML = '';
+        if (!records || records.length === 0) {
+            const row = document.createElement('tr');
+            row.classList.add('empty-state');
+            const cell = document.createElement('td');
+            cell.colSpan = 7;
+            cell.textContent = '暂无数据，请先发起一次请求或调整时间范围。';
+            row.appendChild(cell);
+            tableBody.appendChild(row);
+            return;
+        }
+
+        records.forEach(record => {
+            const row = document.createElement('tr');
+            if (record.status && record.status !== 'success') {
+                row.classList.add('error');
+                row.title = record.error_message || '请求失败';
+            }
+
+            const completedAt = record.completed_at ? new Date(record.completed_at).toLocaleString() : '-';
+
+            row.innerHTML = `
+                <td>${completedAt}</td>
+                <td>${record.model || '-'}</td>
+                <td>${formatNumber(record.prompt_tokens)}</td>
+                <td>${formatNumber(record.completion_tokens)}</td>
+                <td>${formatNumber(record.total_tokens)}</td>
+                <td>${Math.round(record.duration_ms || 0)}</td>
+                <td>${record.status || '-'}</td>
+            `;
+
+            tableBody.appendChild(row);
+        });
+    }
+
+    async function refreshMetrics() {
+        try {
+            setStatus('正在请求数据...');
+
+            const params = new URLSearchParams();
+            const startIso = toIsoString(startInput.value);
+            const endIso = toIsoString(endInput.value);
+            const limit = parseInt(limitInput.value, 10);
+
+            if (startIso) params.set('start', startIso);
+            if (endIso) params.set('end', endIso);
+            if (Number.isFinite(limit)) params.set('limit', Math.max(1, Math.min(1000, limit)));
+
+            const [summary, requests] = await Promise.all([
+                apiFetch(`/metrics/summary?${params.toString()}`),
+                apiFetch(`/metrics/requests?${params.toString()}`)
+            ]);
+
+            renderSummary(summary);
+            renderTable(requests.data || []);
+            const range = [];
+            if (summary.window_start) range.push(`自 ${new Date(summary.window_start).toLocaleString()}`);
+            if (summary.window_end) range.push(`至 ${new Date(summary.window_end).toLocaleString()}`);
+            setStatus(range.join(' '));
+        } catch (error) {
+            console.error(error);
+            setStatus(error.message, true);
+        }
+    }
+
+    function toggleAutoRefresh() {
+        if (autoRefreshTimer) {
+            clearInterval(autoRefreshTimer);
+            autoRefreshTimer = null;
+            autoRefreshButton.textContent = '开启自动刷新';
+            setStatus('自动刷新已关闭');
+        } else {
+            autoRefreshTimer = setInterval(refreshMetrics, 30000);
+            autoRefreshButton.textContent = '关闭自动刷新';
+            setStatus('自动刷新已开启，每 30 秒更新一次。');
+        }
+    }
+
+    saveKeyButton.addEventListener('click', storeKey);
+    refreshButton.addEventListener('click', refreshMetrics);
+    autoRefreshButton.addEventListener('click', toggleAutoRefresh);
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden && autoRefreshTimer) {
+            clearInterval(autoRefreshTimer);
+            autoRefreshTimer = null;
+            autoRefreshButton.textContent = '开启自动刷新';
+        }
+    });
+
+    loadStoredKey();
+    refreshMetrics();
+</script>
+</body>
+</html>
 

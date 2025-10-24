@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Smithery 监控面板</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg-color: #f5f7fb;
+            --text-color: #1c1f2b;
+            --card-bg: #ffffff;
+            --accent: #0066ff;
+            --muted: #6b7280;
+            --danger: #dc2626;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #0f172a;
+                --text-color: #e2e8f0;
+                --card-bg: #111827;
+                --accent: #60a5fa;
+                --muted: #94a3b8;
+                --danger: #f87171;
+            }
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 32px 20px 60px;
+        }
+
+        header {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 28px;
+        }
+
+        header h1 {
+            font-size: 2rem;
+            margin: 0;
+        }
+
+        header p {
+            margin: 0;
+            color: var(--muted);
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 14px;
+            padding: 18px 20px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .card span.label {
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+        }
+
+        .card strong {
+            font-size: 1.8rem;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+            align-items: end;
+        }
+
+        .controls label {
+            font-size: 0.85rem;
+            color: var(--muted);
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .controls input, .controls button {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: var(--card-bg);
+            color: var(--text-color);
+            box-sizing: border-box;
+        }
+
+        .controls button {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.1s ease, box-shadow 0.15s ease;
+        }
+
+        .controls button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
+        }
+
+        .controls button.secondary {
+            background: transparent;
+            color: var(--accent);
+            border: 1px solid var(--accent);
+        }
+
+        .model-visibility {
+            margin-bottom: 24px;
+            background: var(--card-bg);
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .model-visibility .section-title {
+            margin-bottom: 4px;
+        }
+
+        .muted-text {
+            color: var(--muted);
+            margin: 0;
+            font-size: 0.9rem;
+        }
+
+        .model-controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .model-counts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            font-size: 0.9rem;
+            color: var(--muted);
+        }
+
+        .model-counts strong {
+            color: var(--text-color);
+        }
+
+        .model-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+        }
+
+        .model-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: rgba(148, 163, 184, 0.08);
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+
+        .model-item.hidden {
+            border-color: rgba(220, 38, 38, 0.45);
+            background: rgba(220, 38, 38, 0.08);
+        }
+
+        .model-item span {
+            font-size: 0.9rem;
+            word-break: break-all;
+        }
+
+        .model-visibility button {
+            padding: 10px 16px;
+            border-radius: 10px;
+            border: none;
+            background: var(--accent);
+            color: #fff;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.1s ease, box-shadow 0.15s ease;
+        }
+
+        .model-visibility button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
+        }
+
+        .section-title {
+            margin: 0 0 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .token-section {
+            margin-bottom: 24px;
+        }
+
+        .status-bar {
+            margin-bottom: 18px;
+            font-size: 0.9rem;
+            color: var(--muted);
+            min-height: 20px;
+            display: block;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            border-radius: 14px;
+            overflow: hidden;
+            background: var(--card-bg);
+            box-shadow: 0 16px 30px rgba(15, 23, 42, 0.08);
+        }
+
+        table th, table td {
+            padding: 14px 16px;
+            text-align: left;
+            font-size: 0.92rem;
+        }
+
+        table thead {
+            background: rgba(96, 165, 250, 0.18);
+            color: var(--text-color);
+        }
+
+        table tbody tr:not(:last-child) {
+            border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+        }
+
+        table tbody tr.error {
+            background: rgba(220, 38, 38, 0.08);
+        }
+
+        .api-key-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 24px;
+            background: var(--card-bg);
+            padding: 16px 20px;
+            border-radius: 14px;
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+        }
+
+        .api-key-wrapper label {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+
+        .api-key-wrapper input {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: var(--card-bg);
+            color: var(--text-color);
+        }
+
+        .api-key-wrapper button {
+            align-self: flex-start;
+            padding: 8px 16px;
+            border-radius: 10px;
+            border: none;
+            background: var(--accent);
+            color: #fff;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .empty-state {
+            padding: 28px;
+            text-align: center;
+            color: var(--muted);
+        }
+
+        .error-text {
+            color: var(--danger);
+            font-weight: 600;
+        }
+
+        .pagination-controls {
+            margin-top: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .pagination-controls button {
+            padding: 8px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: var(--accent);
+            color: #fff;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.1s ease, box-shadow 0.15s ease;
+        }
+
+        .pagination-controls button.secondary {
+            background: transparent;
+            color: var(--accent);
+        }
+
+        .pagination-controls button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
+        }
+
+        .pagination-controls button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .pagination-controls input {
+            width: 80px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: var(--card-bg);
+            color: var(--text-color);
+        }
+
+        .pagination-controls .pagination-jump {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+
+        @media (max-width: 720px) {
+            header h1 {
+                font-size: 1.5rem;
+            }
+            .card strong {
+                font-size: 1.5rem;
+            }
+            table th, table td {
+                padding: 10px 12px;
+                font-size: 0.85rem;
+            }
+            .model-controls {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .model-visibility button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>Smithery 请求监控</h1>
+        <p>实时洞察请求耗时、模型 token 使用情况以及整体消耗趋势。</p>
+    </header>
+
+    <section class="api-key-wrapper">
+        <label for="apiKeyInput">用于访问 /metrics 接口的 Bearer Token：</label>
+        <input id="apiKeyInput" type="password" placeholder="sk-...">
+        <button id="saveKey">保存密钥</button>
+        <small id="keyStatus" class="status-bar"></small>
+    </section>
+
+    <section class="model-visibility">
+        <div>
+            <h2 class="section-title">模型可见性</h2>
+            <p class="muted-text">选择需要屏蔽的模型，保存后将不再出现在 /v1/models 列表中，并在调用时返回“该模型暂时被屏蔽”。</p>
+        </div>
+        <div class="model-controls">
+            <div class="model-counts">
+                <span>可用模型：<strong id="visibleModelCount">0</strong></span>
+                <span>已屏蔽：<strong id="hiddenModelCount">0</strong></span>
+            </div>
+            <button id="saveModelVisibility">保存模型设置</button>
+        </div>
+        <div id="modelVisibilityList" class="model-grid"></div>
+        <small id="modelStatus" class="status-bar"></small>
+    </section>
+
+    <section class="controls">
+        <div>
+            <label for="startInput">起始时间 (本地时区)</label>
+            <input type="datetime-local" id="startInput">
+        </div>
+        <div>
+            <label for="endInput">结束时间 (本地时区)</label>
+            <input type="datetime-local" id="endInput">
+        </div>
+        <div>
+            <label for="modelInput">模型（精确匹配）</label>
+            <input type="text" id="modelInput" placeholder="例如 gpt-5" spellcheck="false">
+        </div>
+        <div>
+            <label for="limitSelect">每页条数</label>
+            <select id="limitSelect">
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+            </select>
+        </div>
+        <div>
+            <button id="refreshButton">刷新数据</button>
+        </div>
+        <div>
+            <button id="autoRefreshButton" class="secondary">开启自动刷新</button>
+        </div>
+    </section>
+
+    <div class="status-bar" id="statusBar"></div>
+
+    <section class="card-grid" id="summaryCards">
+        <article class="card">
+            <span class="label">请求数量</span>
+            <strong id="requestCount">0</strong>
+            <span class="label" id="successRatio">成功率 0%</span>
+        </article>
+        <article class="card">
+            <span class="label">Prompt Tokens</span>
+            <strong id="promptTokens">0</strong>
+            <span class="label">累计输入</span>
+        </article>
+        <article class="card">
+            <span class="label">Completion Tokens</span>
+            <strong id="completionTokens">0</strong>
+            <span class="label">累计输出</span>
+        </article>
+        <article class="card">
+            <span class="label">Token 总量</span>
+            <strong id="totalTokens">0</strong>
+            <span class="label">平均耗时 <span id="avgLatency">0 ms</span></span>
+        </article>
+    </section>
+
+    <section class="token-section">
+        <h2 class="section-title">令牌使用情况</h2>
+        <table>
+            <thead>
+            <tr>
+                <th>令牌</th>
+                <th>绑定邮箱</th>
+                <th>上次完成时间</th>
+                <th>总 Token</th>
+                <th>使用次数</th>
+            </tr>
+            </thead>
+            <tbody id="tokenTableBody">
+            <tr class="empty-state">
+                <td colspan="5">尚无令牌使用记录。</td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <section>
+        <table>
+            <thead>
+            <tr>
+                <th>完成时间</th>
+                <th>模型</th>
+                <th>Prompt</th>
+                <th>Completion</th>
+                <th>Total</th>
+                <th>耗时 (ms)</th>
+                <th>IP 地址</th>
+                <th>状态</th>
+            </tr>
+            </thead>
+            <tbody id="metricsTableBody">
+            <tr class="empty-state">
+                <td colspan="8">暂无数据，请先发起一次请求或调整时间范围。</td>
+            </tr>
+            </tbody>
+        </table>
+        <div class="pagination-controls">
+            <button id="prevPage" class="secondary">上一页</button>
+            <span id="paginationInfo" class="muted-text">共 0 条记录</span>
+            <div class="pagination-jump">
+                <span>跳转到</span>
+                <input id="pageInput" type="number" min="1" value="1" inputmode="numeric">
+                <span>页</span>
+                <button id="jumpPage" class="secondary">跳转</button>
+            </div>
+            <button id="nextPage" class="secondary">下一页</button>
+        </div>
+    </section>
+</div>
+
+<script>
+    const statusBar = document.getElementById('statusBar');
+    const requestCountEl = document.getElementById('requestCount');
+    const successRatioEl = document.getElementById('successRatio');
+    const promptTokensEl = document.getElementById('promptTokens');
+    const completionTokensEl = document.getElementById('completionTokens');
+    const totalTokensEl = document.getElementById('totalTokens');
+    const avgLatencyEl = document.getElementById('avgLatency');
+    const tableBody = document.getElementById('metricsTableBody');
+    const tokenTableBody = document.getElementById('tokenTableBody');
+    const apiKeyInput = document.getElementById('apiKeyInput');
+    const saveKeyButton = document.getElementById('saveKey');
+    const keyStatus = document.getElementById('keyStatus');
+    const refreshButton = document.getElementById('refreshButton');
+    const autoRefreshButton = document.getElementById('autoRefreshButton');
+    const limitSelect = document.getElementById('limitSelect');
+    const modelInput = document.getElementById('modelInput');
+    const startInput = document.getElementById('startInput');
+    const endInput = document.getElementById('endInput');
+    const modelListContainer = document.getElementById('modelVisibilityList');
+    const saveModelVisibilityButton = document.getElementById('saveModelVisibility');
+    const modelStatus = document.getElementById('modelStatus');
+    const visibleModelCount = document.getElementById('visibleModelCount');
+    const hiddenModelCount = document.getElementById('hiddenModelCount');
+    const paginationInfo = document.getElementById('paginationInfo');
+    const prevPageButton = document.getElementById('prevPage');
+    const nextPageButton = document.getElementById('nextPage');
+    const pageInput = document.getElementById('pageInput');
+    const jumpPageButton = document.getElementById('jumpPage');
+
+    const AUTO_REFRESH_STORAGE_KEY = 'smithery-dashboard-auto-refresh';
+    const AUTO_REFRESH_INTERVAL = 30000;
+
+    let autoRefreshTimer = null;
+    let autoRefreshEnabled = false;
+    let currentPage = 1;
+    let totalPages = 0;
+    let totalRecords = 0;
+
+    function setStatus(message, isError = false) {
+        statusBar.textContent = message || '';
+        statusBar.classList.toggle('error-text', isError);
+    }
+
+    function setModelStatus(message, isError = false) {
+        if (!modelStatus) {
+            return;
+        }
+        modelStatus.textContent = message || '';
+        modelStatus.classList.toggle('error-text', isError);
+    }
+
+    function loadStoredKey() {
+        const stored = localStorage.getItem('smithery-dashboard-key');
+        if (stored) {
+            apiKeyInput.value = stored;
+            keyStatus.textContent = '已从浏览器存储中加载密钥。';
+        }
+    }
+
+    function storeKey() {
+        const value = apiKeyInput.value.trim();
+        if (!value) {
+            keyStatus.textContent = '请输入有效的密钥。';
+            keyStatus.classList.add('error-text');
+            return;
+        }
+        localStorage.setItem('smithery-dashboard-key', value);
+        keyStatus.textContent = '密钥已保存到浏览器，仅当前设备可见。';
+        keyStatus.classList.remove('error-text');
+        loadModelVisibility();
+        refreshMetrics({ resetPage: true });
+    }
+
+    async function apiFetch(path, options = {}) {
+        const headers = new Headers(options.headers || {});
+        headers.set('Accept', 'application/json');
+        const key = apiKeyInput.value.trim() || localStorage.getItem('smithery-dashboard-key');
+        if (key) {
+            headers.set('Authorization', `Bearer ${key}`);
+        }
+
+        const init = { ...options, headers };
+
+        if (init.body && typeof init.body === 'object' && !(init.body instanceof FormData)) {
+            headers.set('Content-Type', 'application/json');
+            init.body = JSON.stringify(init.body);
+        }
+
+        const response = await fetch(path, init);
+        const contentType = response.headers.get('Content-Type') || '';
+
+        if (!response.ok) {
+            let message = response.statusText || '';
+            if (contentType.includes('application/json')) {
+                try {
+                    const errorData = await response.json();
+                    if (typeof errorData === 'object' && errorData !== null) {
+                        message = errorData.detail || JSON.stringify(errorData);
+                    }
+                } catch (error) {
+                    console.error('无法解析错误响应为 JSON', error);
+                }
+            } else {
+                message = await response.text();
+            }
+
+            const detail = message ? ` ${message}` : '';
+            throw new Error(`接口请求失败: ${response.status}${detail}`);
+        }
+
+        if (response.status === 204) {
+            return null;
+        }
+
+        if (contentType.includes('application/json')) {
+            return response.json();
+        }
+
+        return response.text();
+    }
+
+    function toIsoString(value) {
+        if (!value) {
+            return null;
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return null;
+        }
+        return date.toISOString();
+    }
+
+    function escapeHtml(value) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function formatNumber(value) {
+        return Number(value || 0).toLocaleString();
+    }
+
+    function updateModelCounts() {
+        if (!modelListContainer) {
+            return;
+        }
+        const checkboxes = modelListContainer.querySelectorAll('input[type="checkbox"]');
+        const total = checkboxes.length;
+        const hidden = Array.from(checkboxes).filter(input => input.checked).length;
+        if (visibleModelCount) {
+            visibleModelCount.textContent = Math.max(total - hidden, 0);
+        }
+        if (hiddenModelCount) {
+            hiddenModelCount.textContent = hidden;
+        }
+    }
+
+    function renderModelVisibility(config) {
+        if (!modelListContainer) {
+            return;
+        }
+
+        modelListContainer.innerHTML = '';
+
+        if (!config || !Array.isArray(config.known_models) || config.known_models.length === 0) {
+            const empty = document.createElement('div');
+            empty.classList.add('empty-state');
+            empty.textContent = '尚未配置任何模型。';
+            modelListContainer.appendChild(empty);
+            if (saveModelVisibilityButton) {
+                saveModelVisibilityButton.disabled = true;
+            }
+            if (visibleModelCount) {
+                visibleModelCount.textContent = '0';
+            }
+            if (hiddenModelCount) {
+                hiddenModelCount.textContent = '0';
+            }
+            return;
+        }
+
+        const hiddenSet = new Set(config.hidden_models || []);
+
+        config.known_models.forEach(model => {
+            const wrapper = document.createElement('label');
+            wrapper.className = 'model-item';
+
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.value = model;
+            input.checked = hiddenSet.has(model);
+            wrapper.classList.toggle('hidden', input.checked);
+
+            input.addEventListener('change', () => {
+                wrapper.classList.toggle('hidden', input.checked);
+                updateModelCounts();
+            });
+
+            const span = document.createElement('span');
+            span.textContent = model;
+
+            wrapper.appendChild(input);
+            wrapper.appendChild(span);
+            modelListContainer.appendChild(wrapper);
+        });
+
+        if (saveModelVisibilityButton) {
+            saveModelVisibilityButton.disabled = false;
+        }
+
+        updateModelCounts();
+    }
+
+    async function loadModelVisibility() {
+        if (!modelListContainer) {
+            return;
+        }
+        try {
+            setModelStatus('正在加载模型配置...');
+            const config = await apiFetch('/settings/models/visibility');
+            renderModelVisibility(config);
+            setModelStatus('模型配置已加载。');
+        } catch (error) {
+            console.error(error);
+            setModelStatus(error.message, true);
+            if (saveModelVisibilityButton) {
+                saveModelVisibilityButton.disabled = true;
+            }
+        }
+    }
+
+    async function saveModelVisibility() {
+        if (!modelListContainer) {
+            return;
+        }
+        try {
+            if (saveModelVisibilityButton) {
+                saveModelVisibilityButton.disabled = true;
+            }
+            setModelStatus('正在保存模型设置...');
+            const hiddenModels = Array.from(
+                modelListContainer.querySelectorAll('input[type="checkbox"]')
+            )
+                .filter(input => input.checked)
+                .map(input => input.value);
+
+            const updated = await apiFetch('/settings/models/visibility', {
+                method: 'PUT',
+                body: { hidden_models: hiddenModels }
+            });
+
+            renderModelVisibility(updated);
+            setModelStatus('模型设置已更新。');
+        } catch (error) {
+            console.error(error);
+            setModelStatus(error.message, true);
+        } finally {
+            if (saveModelVisibilityButton) {
+                saveModelVisibilityButton.disabled = false;
+            }
+        }
+    }
+
+    function renderSummary(summary) {
+        const requestCount = summary.request_count || 0;
+        const successCount = summary.success_count || 0;
+        const errorCount = summary.error_count || 0;
+        const totalTokens = summary.total_tokens || 0;
+
+        const successRate = requestCount === 0 ? 0 : Math.round((successCount / requestCount) * 100);
+
+        requestCountEl.textContent = formatNumber(requestCount);
+        successRatioEl.textContent = `成功率 ${successRate}% (失败 ${formatNumber(errorCount)} 次)`;
+        promptTokensEl.textContent = formatNumber(summary.prompt_tokens || 0);
+        completionTokensEl.textContent = formatNumber(summary.completion_tokens || 0);
+        totalTokensEl.textContent = formatNumber(totalTokens);
+        avgLatencyEl.textContent = `${Math.round(summary.average_latency_ms || 0)} ms`;
+    }
+
+    function renderTable(records) {
+        tableBody.innerHTML = '';
+        if (!records || records.length === 0) {
+            const row = document.createElement('tr');
+            row.classList.add('empty-state');
+            const cell = document.createElement('td');
+            cell.colSpan = 8;
+            cell.textContent = '暂无数据，请先发起一次请求或调整时间范围。';
+            row.appendChild(cell);
+            tableBody.appendChild(row);
+            return;
+        }
+
+        records.forEach(record => {
+            const row = document.createElement('tr');
+            if (record.status && record.status !== 'success') {
+                row.classList.add('error');
+                row.title = String(record.error_message || '请求失败');
+            }
+
+            const completedAt = record.completed_at ? new Date(record.completed_at).toLocaleString() : '-';
+
+            row.innerHTML = `
+                <td>${completedAt}</td>
+                <td>${escapeHtml(record.model || '-')}</td>
+                <td>${formatNumber(record.prompt_tokens)}</td>
+                <td>${formatNumber(record.completion_tokens)}</td>
+                <td>${formatNumber(record.total_tokens)}</td>
+                <td>${Math.round(record.duration_ms || 0)}</td>
+                <td>${escapeHtml(record.client_ip || '-')}</td>
+                <td>${escapeHtml(record.status || '-')}</td>
+            `;
+
+            tableBody.appendChild(row);
+        });
+    }
+
+    function updatePaginationControls(pagination = {}) {
+        const total = Number(pagination.total || 0);
+        const page = Number(pagination.page || 1);
+        const pages = Number(pagination.total_pages || 0);
+
+        totalRecords = total;
+        totalPages = pages > 0 ? pages : 0;
+        currentPage = Math.max(1, totalPages > 0 ? Math.min(page, totalPages) : 1);
+
+        if (paginationInfo) {
+            if (totalPages > 0) {
+                paginationInfo.textContent = `第 ${currentPage} / ${totalPages} 页，共 ${formatNumber(totalRecords)} 条记录`;
+            } else {
+                paginationInfo.textContent = `共 ${formatNumber(totalRecords)} 条记录`;
+            }
+        }
+
+        if (pageInput) {
+            pageInput.value = currentPage;
+            pageInput.min = 1;
+            if (totalPages > 0) {
+                pageInput.max = totalPages;
+                pageInput.disabled = false;
+            } else {
+                pageInput.removeAttribute('max');
+                pageInput.disabled = totalRecords === 0;
+            }
+        }
+
+        if (jumpPageButton) {
+            jumpPageButton.disabled = totalRecords === 0;
+        }
+
+        if (prevPageButton) {
+            prevPageButton.disabled = currentPage <= 1 || totalPages === 0;
+        }
+
+        if (nextPageButton) {
+            nextPageButton.disabled = totalPages === 0 || currentPage >= totalPages;
+        }
+    }
+
+    function jumpToPage(page) {
+        if (!Number.isFinite(page)) {
+            return;
+        }
+
+        const pageSize = parseInt(limitSelect.value, 10) || 1;
+        const computedTotalPages = totalPages > 0
+            ? totalPages
+            : (totalRecords > 0 ? Math.ceil(totalRecords / pageSize) : 1);
+        const maxPage = Math.max(1, computedTotalPages);
+        const target = Math.min(Math.max(1, Math.floor(page)), maxPage);
+
+        if (target !== currentPage) {
+            currentPage = target;
+            refreshMetrics();
+        }
+    }
+
+    function renderTokenStats(tokens) {
+        tokenTableBody.innerHTML = '';
+
+        if (!Array.isArray(tokens) || tokens.length === 0) {
+            const row = document.createElement('tr');
+            row.classList.add('empty-state');
+            const cell = document.createElement('td');
+            cell.colSpan = 5;
+            cell.textContent = '尚无令牌使用记录。';
+            row.appendChild(cell);
+            tokenTableBody.appendChild(row);
+            return;
+        }
+
+        tokens.forEach(token => {
+            const row = document.createElement('tr');
+            const label = token.token_label || `SMITHERY_COOKIE_${Number(token.token_index) + 1}`;
+            const maskedEmail = token.token_email || '-';
+            const lastCompleted = token.last_completed_at ? new Date(token.last_completed_at).toLocaleString() : '无记录';
+
+            row.innerHTML = `
+                <td>${label}</td>
+                <td>${maskedEmail}</td>
+                <td>${lastCompleted}</td>
+                <td>${formatNumber(token.total_tokens)}</td>
+                <td>${formatNumber(token.usage_count)}</td>
+            `;
+
+            tokenTableBody.appendChild(row);
+        });
+    }
+
+    async function refreshMetrics(options = {}) {
+        const { resetPage = false } = options;
+
+        try {
+            if (resetPage) {
+                currentPage = 1;
+            }
+
+            setStatus('正在请求数据...');
+
+            const baseParams = new URLSearchParams();
+            const startIso = toIsoString(startInput.value);
+            const endIso = toIsoString(endInput.value);
+            const pageSize = parseInt(limitSelect.value, 10);
+            const model = modelInput.value.trim();
+
+            if (startIso) baseParams.set('start', startIso);
+            if (endIso) baseParams.set('end', endIso);
+            if (model) baseParams.set('model', model);
+
+            const requestsParams = new URLSearchParams(baseParams);
+            if (Number.isFinite(pageSize)) {
+                const normalized = Math.max(1, Math.min(1000, pageSize));
+                requestsParams.set('limit', String(normalized));
+            }
+
+            currentPage = Math.max(1, currentPage);
+            requestsParams.set('page', String(currentPage));
+
+            const summaryQuery = baseParams.toString();
+            const requestsQuery = requestsParams.toString();
+
+            const [summary, requests] = await Promise.all([
+                apiFetch(summaryQuery ? `/metrics/summary?${summaryQuery}` : '/metrics/summary'),
+                apiFetch(requestsQuery ? `/metrics/requests?${requestsQuery}` : '/metrics/requests')
+            ]);
+
+            renderSummary(summary);
+            renderTokenStats(summary.token_stats || []);
+            renderTable(requests.data || []);
+            updatePaginationControls(requests.pagination || { page: currentPage, total: 0, total_pages: 0 });
+
+            const range = [];
+            if (summary.window_start) range.push(`自 ${new Date(summary.window_start).toLocaleString()}`);
+            if (summary.window_end) range.push(`至 ${new Date(summary.window_end).toLocaleString()}`);
+            setStatus(range.join(' '));
+        } catch (error) {
+            console.error(error);
+            setStatus(error.message, true);
+        }
+    }
+
+    function startAutoRefreshTimer() {
+        if (!autoRefreshTimer) {
+            autoRefreshTimer = setInterval(() => refreshMetrics(), AUTO_REFRESH_INTERVAL);
+        }
+    }
+
+    function stopAutoRefreshTimer() {
+        if (autoRefreshTimer) {
+            clearInterval(autoRefreshTimer);
+            autoRefreshTimer = null;
+        }
+    }
+
+    function applyAutoRefreshState(options = {}) {
+        const { silent = false } = options;
+
+        if (autoRefreshEnabled) {
+            startAutoRefreshTimer();
+            autoRefreshButton.textContent = '关闭自动刷新';
+            if (!silent) {
+                setStatus('自动刷新已开启，每 30 秒更新一次。');
+            }
+        } else {
+            stopAutoRefreshTimer();
+            autoRefreshButton.textContent = '开启自动刷新';
+            if (!silent) {
+                setStatus('自动刷新已关闭');
+            }
+        }
+
+        localStorage.setItem(AUTO_REFRESH_STORAGE_KEY, autoRefreshEnabled ? '1' : '0');
+    }
+
+    function toggleAutoRefresh() {
+        autoRefreshEnabled = !autoRefreshEnabled;
+        applyAutoRefreshState();
+        if (autoRefreshEnabled) {
+            refreshMetrics();
+        }
+    }
+
+    saveKeyButton.addEventListener('click', storeKey);
+    refreshButton.addEventListener('click', () => refreshMetrics());
+    autoRefreshButton.addEventListener('click', toggleAutoRefresh);
+    limitSelect.addEventListener('change', () => refreshMetrics({ resetPage: true }));
+    modelInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            refreshMetrics({ resetPage: true });
+        }
+    });
+    startInput.addEventListener('change', () => refreshMetrics({ resetPage: true }));
+    endInput.addEventListener('change', () => refreshMetrics({ resetPage: true }));
+    if (prevPageButton) {
+        prevPageButton.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage -= 1;
+                refreshMetrics();
+            }
+        });
+    }
+    if (nextPageButton) {
+        nextPageButton.addEventListener('click', () => {
+            if (!totalPages || currentPage < totalPages) {
+                currentPage += 1;
+                refreshMetrics();
+            }
+        });
+    }
+    if (jumpPageButton && pageInput) {
+        jumpPageButton.addEventListener('click', () => {
+            const target = Number(pageInput.value);
+            if (Number.isFinite(target)) {
+                jumpToPage(target);
+            }
+        });
+        pageInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                const target = Number(pageInput.value);
+                if (Number.isFinite(target)) {
+                    jumpToPage(target);
+                }
+            }
+        });
+    }
+    if (saveModelVisibilityButton) {
+        saveModelVisibilityButton.addEventListener('click', saveModelVisibility);
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && autoRefreshEnabled) {
+            startAutoRefreshTimer();
+            refreshMetrics();
+        }
+    });
+
+    loadStoredKey();
+    loadModelVisibility();
+
+    const storedAutoRefresh = localStorage.getItem(AUTO_REFRESH_STORAGE_KEY);
+    if (storedAutoRefresh === '1') {
+        autoRefreshEnabled = true;
+    }
+    applyAutoRefreshState({ silent: true });
+
+    refreshMetrics();
+</script>
+</body>
+</html>
